@@ -1,0 +1,9 @@
+ahoyapi: v2
+usage: StreamChop cli tools.
+env:
+  - .env
+commands:
+  docker:
+    usage: Docker commands for StreamChop
+    imports:
+      - .ahoy/docker.ahoy.yml
