@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build image
-        run: docker build -t streamchop .
+        run: docker build -t streamchop ./chopper
 
       - name: Test FFmpeg installed
         run: docker run --rm --entrypoint ffmpeg streamchop -version

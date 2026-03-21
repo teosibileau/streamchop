@@ -1,9 +1,10 @@
+---
 services:
-  streamchop:
-    build: .
-    container_name: streamchop
+  chopper_cam_1:
+    build: ./chopper
+    container_name: chopper-cam-1
     restart: unless-stopped
-    env_file:
-      - .env
+    environment:
+      - RTSP_URL=${CAM1_RTSP_URL}
     volumes:
-      - ./output:/output
+      - ./output/cam1:/output
