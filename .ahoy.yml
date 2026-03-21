@@ -3,6 +3,9 @@ usage: StreamChop cli tools.
 env:
   - .env
 commands:
+  setup:
+    usage: Install pre-commit hooks
+    cmd: pre-commit install
   docker:
     usage: Docker commands for StreamChop
     imports:
