@@ -1,0 +1,20 @@
+# Environment
+.env
+
+# HLS output
+output/*.ts
+output/*.m3u8
+
+# Docker
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

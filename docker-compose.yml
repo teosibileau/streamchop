@@ -1,0 +1,9 @@
+services:
+  streamchop:
+    build: .
+    container_name: streamchop
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./output:/output
