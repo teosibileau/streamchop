@@ -6,11 +6,17 @@ if [ -z "$RTSP_URL" ]; then
   exit 1
 fi
 
+mkdir -p /output/snapshots
+
 exec ffmpeg -rtsp_transport tcp -i "$RTSP_URL" \
   -c copy \
   -f hls \
   -hls_time 10 \
-  -hls_list_size 6 \
-  -hls_flags delete_segments \
-  -hls_segment_filename /output/segment_%03d.ts \
-  /output/stream.m3u8
+  -hls_list_size 360 \
+  -strftime 1 \
+  -hls_segment_filename /output/segment_%s.ts \
+  /output/stream.m3u8 \
+  -vf fps=1 \
+  -q:v 2 \
+  -strftime 1 \
+  /output/snapshots/snap_%s.jpg
