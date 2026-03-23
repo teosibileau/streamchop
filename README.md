@@ -88,6 +88,62 @@ Segments and snapshots use Unix epoch timestamps:
 
 The playlist keeps 360 segments (1 hour of rewind). Old segments are retained on disk.
 
+## Production deployment
+
+The goal of this setup is to deploy minimal edge units close to the cameras — for example, a Pi or small compute node on the same VLAN as the cameras. The MQTT broker and any downstream consumers live elsewhere on the network.
+
+Use the pre-built images from GHCR instead of building locally. Create a `docker-compose.yml` on each edge node:
+
+```yaml
+services:
+  chopper_cam_1:
+    image: ghcr.io/teosibileau/streamchop/chopper:latest
+    container_name: streamchop-chopper-cam1
+    restart: unless-stopped
+    environment:
+      - RTSP_URL=rtsp://admin:pass@192.168.1.100:554/cam/realmonitor?channel=1&subtype=0
+    volumes:
+      - ./output/cam1:/output
+
+  chopper_cam_2:
+    image: ghcr.io/teosibileau/streamchop/chopper:latest
+    container_name: streamchop-chopper-cam2
+    restart: unless-stopped
+    environment:
+      - RTSP_URL=rtsp://admin:pass@192.168.1.101:554/cam/realmonitor?channel=1&subtype=0
+    volumes:
+      - ./output/cam2:/output
+
+  emitter:
+    image: ghcr.io/teosibileau/streamchop/emitter:latest
+    container_name: streamchop-emitter
+    restart: unless-stopped
+    environment:
+      - MQTT_HOST=10.0.0.50
+      - MQTT_PORT=1883
+      - MQTT_TOPIC_PREFIX=streamchop
+      - HLS_BASE_URL=http://192.168.1.50:8080
+      - WATCH_DIR=/output
+      - RUST_LOG=info
+    volumes:
+      - ./output:/output:ro
+
+  nginx:
+    image: nginx:alpine
+    container_name: streamchop-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./output:/usr/share/nginx/html:ro
+```
+
+Pin to a specific SHA for reproducible deployments:
+
+```yaml
+    image: ghcr.io/teosibileau/streamchop/chopper:abc123def
+```
+
 ## Adding cameras
 
 Duplicate the chopper service in `docker-compose.yml`:
