@@ -1,34 +1,21 @@
 mod config;
 mod events;
+mod mqtt;
 
 use chrono::Utc;
 use config::Config;
 use events::{SegmentEvent, SnapshotEvent};
-use log::{debug, error, info, warn};
+use log::{info, warn};
+use mqtt::MqttPublisher;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
-use rumqttc::{Client, MqttOptions, QoS};
-use serde::Serialize;
 use std::path::Path;
 use std::sync::mpsc;
-use std::time::Duration;
 
 fn main() {
     env_logger::init();
 
     let config = Config::from_env();
-
-    let mut mqtt_opts = MqttOptions::new("streamchop-emitter", &config.mqtt_host, config.mqtt_port);
-    mqtt_opts.set_keep_alive(Duration::from_secs(30));
-
-    let (client, mut connection) = Client::new(mqtt_opts, 64);
-
-    std::thread::spawn(move || {
-        for notification in connection.iter() {
-            if let Err(e) = notification {
-                error!("MQTT connection error: {e}");
-            }
-        }
-    });
+    let publisher = MqttPublisher::new(&config);
 
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
 
@@ -60,15 +47,15 @@ fn main() {
             };
 
             match ext {
-                "ts" => handle_segment(path, &filename, &config, &client),
-                "jpg" => handle_snapshot(path, &filename, &config, &client),
+                "ts" => handle_segment(path, &filename, &config, &publisher),
+                "jpg" => handle_snapshot(path, &filename, &config, &publisher),
                 _ => {}
             }
         }
     }
 }
 
-fn handle_segment(path: &Path, filename: &str, config: &Config, client: &Client) {
+fn handle_segment(path: &Path, filename: &str, config: &Config, publisher: &MqttPublisher) {
     let camera_id = match extract_camera_id(path) {
         Some(id) => id,
         None => return,
@@ -89,11 +76,10 @@ fn handle_segment(path: &Path, filename: &str, config: &Config, client: &Client)
         timestamp: Utc::now().to_rfc3339(),
     };
 
-    let topic = format!("{}/{camera_id}/segment", config.topic_prefix);
-    publish(client, &topic, &event);
+    publisher.publish_segment(&camera_id, &event);
 }
 
-fn handle_snapshot(path: &Path, filename: &str, config: &Config, client: &Client) {
+fn handle_snapshot(path: &Path, filename: &str, config: &Config, publisher: &MqttPublisher) {
     let camera_id = match path
         .parent()
         .and_then(|p| p.parent())
@@ -124,8 +110,7 @@ fn handle_snapshot(path: &Path, filename: &str, config: &Config, client: &Client
         timestamp: Utc::now().to_rfc3339(),
     };
 
-    let topic = format!("{}/{camera_id}/snapshot", config.topic_prefix);
-    publish(client, &topic, &event);
+    publisher.publish_snapshot(&camera_id, &event);
 }
 
 fn extract_camera_id(path: &Path) -> Option<String> {
@@ -140,19 +125,4 @@ fn extract_epoch(filename: &str, prefix: &str) -> Option<u64> {
         .strip_prefix(prefix)
         .and_then(|rest| rest.split('.').next())
         .and_then(|num| num.parse().ok())
-}
-
-fn publish<T: Serialize>(client: &Client, topic: &str, event: &T) {
-    let payload = match serde_json::to_string(event) {
-        Ok(p) => p,
-        Err(e) => {
-            error!("JSON serialization error: {e}");
-            return;
-        }
-    };
-
-    debug!("Publishing to {topic}: {payload}");
-    if let Err(e) = client.publish(topic, QoS::AtLeastOnce, false, payload.as_bytes()) {
-        error!("MQTT publish error: {e}");
-    }
 }
