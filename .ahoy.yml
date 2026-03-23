@@ -6,6 +6,12 @@ commands:
   setup:
     usage: Install pre-commit hooks
     cmd: pre-commit install
+  clean:
+    usage: Remove all segments and snapshots from the output folder
+    cmd: |
+      echo "Cleaning output folder..."
+      rm -rf output/*/snapshots output/*/*.ts output/*/*.m3u8
+      echo "Done."
   docker:
     usage: Docker commands for StreamChop
     imports:

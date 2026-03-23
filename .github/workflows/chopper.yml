@@ -1,0 +1,64 @@
+name: Chopper
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'chopper/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'chopper/**'
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}/chopper
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t streamchop-chopper ./chopper
+
+      - name: Test FFmpeg installed
+        run: docker run --rm --entrypoint ffmpeg streamchop-chopper -version
+
+      - name: Test missing RTSP_URL
+        run: |
+          output=$(docker run --rm -e RTSP_URL= streamchop-chopper 2>&1 || true)
+          echo "$output"
+          echo "$output" | grep -q "ERROR: RTSP_URL is not set"
+
+      - name: Test bogus RTSP_URL
+        run: |
+          output=$(docker run --rm -e RTSP_URL=rtsp://bogus:554/test streamchop-chopper 2>&1 || true)
+          echo "$output"
+          echo "$output" | grep -q "resolve hostname"
+
+  publish:
+    needs: smoke-test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./chopper
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}

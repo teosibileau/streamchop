@@ -1,0 +1,13 @@
+[package]
+name = "streamchop-emitter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+notify = "7"
+rumqttc = "0.24"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+log = "0.4"
+env_logger = "0.11"

@@ -1,34 +1,172 @@
 # StreamChop
 
-A Docker container that consumes RTSP streams and chops them into HLS segments with a `.m3u8` playlist.
+A multi-service Docker pipeline that ingests RTSP camera streams, chops them into HLS segments with JPEG snapshots, serves them over HTTP, and emits MQTT events.
 
-## How it works
+## Architecture
 
 ```
-Camera (RTSP) → FFmpeg (-c copy) → .ts segments + .m3u8
+N x Cameras (RTSP) --> Chopper (FFmpeg) --> .ts segments + .m3u8 + snapshots
+                                                     |
+                                     Emitter (Rust) --> MQTT events
+                                     Nginx -----------> HLS + snapshots over HTTP
 ```
 
-FFmpeg remuxes the H.264 stream without re-encoding. Bottleneck is network, not CPU — runs fine on a Pi.
+FFmpeg remuxes H.264 without re-encoding (`-c copy`) for HLS segments. Snapshots are decoded at 1 fps. Runs fine on a Pi.
+
+## Services
+
+| Service | Image | Description |
+|---------|-------|-------------|
+| `chopper_cam_1` | Alpine + FFmpeg | RTSP to HLS segments + JPEG snapshots (one per camera) |
+| `emitter` | Rust (Alpine) | Watches output dirs, publishes MQTT on new segments and snapshots |
+| `mqtt` | RabbitMQ + MQTT plugin | Message broker with management UI on `:15672` |
+| `nginx` | Nginx (Alpine) | Serves HLS files and snapshots over HTTP on `:8080` |
 
 ## Quick start
 
 ```bash
-cp .env.example .env   # fill in your RTSP_URL
-ahoy docker up         # or: docker compose up -d --build
+cp .env.example .env   # fill in camera URL + HLS_BASE_URL with your host IP
+ahoy setup             # install pre-commit hooks
+ahoy docker up         # start all services
 ```
 
-HLS output lands in `./output/` — point any HLS player (VLC, Safari) at `output/stream.m3u8`.
+HLS stream available at `http://<host-ip>:8080/cam1/stream.m3u8`
+Latest snapshot at `http://<host-ip>:8080/cam1/snapshots/snap_<epoch>.jpg`
+RabbitMQ management at `http://localhost:15672` (guest/guest)
 
 ## Configuration
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `RTSP_URL` | Full RTSP stream URL | `rtsp://admin:pass@192.168.1.100:554/cam/realmonitor?channel=1&subtype=0` |
+| `CAM1_RTSP_URL` | RTSP stream URL for camera 1 | `rtsp://admin:pass@192.168.1.100:554/cam/realmonitor?channel=1&subtype=0` |
+| `MQTT_HOST` | MQTT broker hostname | `mqtt` |
+| `MQTT_PORT` | MQTT broker port | `1883` |
+| `MQTT_TOPIC_PREFIX` | Prefix for MQTT topics | `streamchop` |
+| `HLS_BASE_URL` | Public base URL for HLS files | `http://192.168.1.237:8080` |
+
+## MQTT events
+
+### Segment events
+
+Topic: `<prefix>/<camera_id>/segment`
+
+```json
+{
+  "camera_id": "cam1",
+  "segment": "segment_1711195200.ts",
+  "playlist": "http://192.168.1.237:8080/cam1/stream.m3u8",
+  "segment_url": "http://192.168.1.237:8080/cam1/segment_1711195200.ts",
+  "segment_epoch": 1711195200,
+  "timestamp": "2026-03-23T12:00:00+00:00"
+}
+```
+
+### Snapshot events
+
+Topic: `<prefix>/<camera_id>/snapshot`
+
+```json
+{
+  "camera_id": "cam1",
+  "snapshot": "snap_1711195203.jpg",
+  "snapshot_url": "http://192.168.1.237:8080/cam1/snapshots/snap_1711195203.jpg",
+  "snapshot_epoch": 1711195203,
+  "segment": "segment_1711195200.ts",
+  "segment_url": "http://192.168.1.237:8080/cam1/segment_1711195200.ts",
+  "segment_epoch": 1711195200,
+  "timestamp": "2026-03-23T12:00:03+00:00"
+}
+```
+
+Snapshot-to-segment matching: the snapshot epoch is rounded down to the nearest 10-second boundary to find its parent segment.
+
+## File naming
+
+Segments and snapshots use Unix epoch timestamps:
+- `segment_1711195200.ts` — segment starting at epoch 1711195200
+- `snap_1711195203.jpg` — snapshot taken at epoch 1711195203
+
+The playlist keeps 360 segments (1 hour of rewind). Old segments are retained on disk.
+
+## Production deployment
+
+The goal of this setup is to deploy minimal edge units close to the cameras — for example, a Pi or small compute node on the same VLAN as the cameras. The MQTT broker and any downstream consumers live elsewhere on the network.
+
+Use the pre-built images from GHCR instead of building locally. Create a `docker-compose.yml` on each edge node:
+
+```yaml
+services:
+  chopper_cam_1:
+    image: ghcr.io/teosibileau/streamchop/chopper:latest
+    container_name: streamchop-chopper-cam1
+    restart: unless-stopped
+    environment:
+      - RTSP_URL=rtsp://admin:pass@192.168.1.100:554/cam/realmonitor?channel=1&subtype=0
+    volumes:
+      - ./output/cam1:/output
+
+  chopper_cam_2:
+    image: ghcr.io/teosibileau/streamchop/chopper:latest
+    container_name: streamchop-chopper-cam2
+    restart: unless-stopped
+    environment:
+      - RTSP_URL=rtsp://admin:pass@192.168.1.101:554/cam/realmonitor?channel=1&subtype=0
+    volumes:
+      - ./output/cam2:/output
+
+  emitter:
+    image: ghcr.io/teosibileau/streamchop/emitter:latest
+    container_name: streamchop-emitter
+    restart: unless-stopped
+    environment:
+      - MQTT_HOST=10.0.0.50
+      - MQTT_PORT=1883
+      - MQTT_TOPIC_PREFIX=streamchop
+      - HLS_BASE_URL=http://192.168.1.50:8080
+      - WATCH_DIR=/output
+      - RUST_LOG=info
+    volumes:
+      - ./output:/output:ro
+
+  nginx:
+    image: nginx:alpine
+    container_name: streamchop-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./output:/usr/share/nginx/html:ro
+```
+
+Pin to a specific SHA for reproducible deployments:
+
+```yaml
+    image: ghcr.io/teosibileau/streamchop/chopper:abc123def
+```
+
+## Adding cameras
+
+Duplicate the chopper service in `docker-compose.yml`:
+
+```yaml
+  chopper_cam_2:
+    build: ./chopper
+    container_name: streamchop-chopper-cam2
+    restart: unless-stopped
+    environment:
+      - RTSP_URL=${CAM2_RTSP_URL}
+    volumes:
+      - ./output/cam2:/output
+```
+
+Add `CAM2_RTSP_URL` to `.env`. The emitter automatically picks up new subdirectories under `output/`.
 
 ## Ahoy commands
 
 | Command | Description |
 |---------|-------------|
+| `ahoy setup` | Install pre-commit hooks |
+| `ahoy clean` | Remove all segments and snapshots from the output folder |
 | `ahoy docker up` | Start containers |
 | `ahoy docker stop` | Stop containers (non-destructive) |
 | `ahoy docker build` | Build containers |
@@ -43,11 +181,24 @@ HLS output lands in `./output/` — point any HLS player (VLC, Safari) at `outpu
 ## Project structure
 
 ```
-.ahoy.yml                 # Root ahoy config
-.ahoy/docker.ahoy.yml     # Docker commands
-.env.example               # Environment template
-Dockerfile                 # Alpine + FFmpeg
-docker-compose.yml         # Service definition
-entrypoint.sh              # FFmpeg launch script
-output/                    # HLS segments (gitignored)
+chopper/                   # FFmpeg chopper image
+  Dockerfile
+  entrypoint.sh
+emitter/                   # Rust MQTT emitter image
+  Cargo.toml
+  src/main.rs
+  Dockerfile
+nginx/                     # Nginx HLS server image
+  nginx.conf
+  Dockerfile
+.ahoy.yml                  # Root ahoy config
+.ahoy/docker.ahoy.yml      # Docker commands
+.env.example                # Environment template
+docker-compose.yml          # Service definitions
+output/                     # Per-camera HLS segments + snapshots (gitignored)
+  cam1/
+    segment_<epoch>.ts
+    stream.m3u8
+    snapshots/
+      snap_<epoch>.jpg
 ```
