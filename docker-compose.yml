@@ -33,6 +33,7 @@ services:
       - MQTT_TOPIC_PREFIX=${MQTT_TOPIC_PREFIX:-streamchop}
       - HLS_BASE_URL=${HLS_BASE_URL}
       - WATCH_DIR=/output
+      - RUST_LOG=info
     volumes:
       - ./output:/output:ro
     depends_on:

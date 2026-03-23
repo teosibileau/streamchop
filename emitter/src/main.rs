@@ -2,6 +2,7 @@ mod events;
 
 use chrono::Utc;
 use events::{SegmentEvent, SnapshotEvent};
+use log::{debug, error, info, warn};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use rumqttc::{Client, MqttOptions, QoS};
 use serde::Serialize;
@@ -11,6 +12,8 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 fn main() {
+    env_logger::init();
+
     let mqtt_host = env::var("MQTT_HOST").expect("MQTT_HOST is required");
     let mqtt_port: u16 = env::var("MQTT_PORT")
         .unwrap_or_else(|_| "1883".to_string())
@@ -33,7 +36,7 @@ fn main() {
     std::thread::spawn(move || {
         for notification in connection.iter() {
             if let Err(e) = notification {
-                eprintln!("MQTT connection error: {e}");
+                error!("MQTT connection error: {e}");
             }
         }
     });
@@ -45,13 +48,13 @@ fn main() {
         .watch(Path::new(&watch_dir), RecursiveMode::Recursive)
         .expect("Failed to watch output directory");
 
-    println!("Watching {watch_dir} for new segments and snapshots...");
+    info!("Watching {watch_dir} for new segments and snapshots...");
 
     for event in rx {
         let event = match event {
             Ok(e) => e,
             Err(e) => {
-                eprintln!("Watch error: {e}");
+                warn!("Watch error: {e}");
                 continue;
             }
         };
@@ -69,7 +72,6 @@ fn main() {
 
             match ext {
                 "ts" => {
-                    // Path: /output/<camera_id>/segment_<epoch>.ts
                     let camera_id = match extract_camera_id(path) {
                         Some(id) => id,
                         None => continue,
@@ -94,8 +96,6 @@ fn main() {
                     publish(&client, &topic, &event);
                 }
                 "jpg" => {
-                    // Path: /output/<camera_id>/snapshots/snap_<epoch>.jpg
-                    // camera_id is two levels up
                     let camera_id = match path
                         .parent()
                         .and_then(|p| p.parent())
@@ -111,7 +111,6 @@ fn main() {
                         None => continue,
                     };
 
-                    // Round down to nearest segment boundary
                     let seg_epoch = snap_epoch - (snap_epoch % segment_duration);
                     let segment_name = format!("segment_{seg_epoch}.ts");
 
@@ -154,13 +153,13 @@ fn publish<T: Serialize>(client: &Client, topic: &str, event: &T) {
     let payload = match serde_json::to_string(event) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("JSON error: {e}");
+            error!("JSON serialization error: {e}");
             return;
         }
     };
 
-    println!("Publishing to {topic}: {payload}");
+    debug!("Publishing to {topic}: {payload}");
     if let Err(e) = client.publish(topic, QoS::AtLeastOnce, false, payload.as_bytes()) {
-        eprintln!("MQTT publish error: {e}");
+        error!("MQTT publish error: {e}");
     }
 }
