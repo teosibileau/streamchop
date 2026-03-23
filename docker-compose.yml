@@ -2,7 +2,7 @@
 services:
   chopper_cam_1:
     build: ./chopper
-    container_name: chopper-cam-1
+    container_name: streamchop-chopper-cam1
     restart: unless-stopped
     environment:
       - RTSP_URL=${CAM1_RTSP_URL}
@@ -37,3 +37,12 @@ services:
       - ./output:/output:ro
     depends_on:
       - mqtt
+
+  nginx:
+    build: ./nginx
+    container_name: streamchop-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./output:/usr/share/nginx/html:ro
