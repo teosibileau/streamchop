@@ -8,3 +8,32 @@ services:
       - RTSP_URL=${CAM1_RTSP_URL}
     volumes:
       - ./output/cam1:/output
+
+  mqtt:
+    image: rabbitmq:4-management-alpine
+    container_name: streamchop-mqtt
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    ports:
+      - "1883:1883"
+      - "15672:15672"
+    command: >
+      sh -c "rabbitmq-plugins enable rabbitmq_mqtt --offline &&
+      rabbitmq-server"
+
+  emitter:
+    build: ./emitter
+    container_name: streamchop-emitter
+    restart: unless-stopped
+    environment:
+      - MQTT_HOST=${MQTT_HOST}
+      - MQTT_PORT=${MQTT_PORT:-1883}
+      - MQTT_TOPIC_PREFIX=${MQTT_TOPIC_PREFIX:-streamchop}
+      - HLS_BASE_URL=${HLS_BASE_URL}
+      - WATCH_DIR=/output
+    volumes:
+      - ./output:/output:ro
+    depends_on:
+      - mqtt
