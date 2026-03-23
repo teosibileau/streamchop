@@ -1,26 +1,26 @@
 # StreamChop
 
-A multi-service Docker pipeline that ingests RTSP camera streams, chops them into HLS segments, serves them over HTTP, and emits MQTT events for each new segment.
+A multi-service Docker pipeline that ingests RTSP camera streams, chops them into HLS segments with JPEG snapshots, serves them over HTTP, and emits MQTT events.
 
 ## Architecture
 
 ```
-N x Cameras (RTSP) --> Chopper (FFmpeg -c copy) --> .ts segments + .m3u8
-                                                          |
-                                          Emitter (Rust) --> MQTT events
-                                          Nginx -----------> HLS over HTTP
+N x Cameras (RTSP) --> Chopper (FFmpeg) --> .ts segments + .m3u8 + snapshots
+                                                     |
+                                     Emitter (Rust) --> MQTT events
+                                     Nginx -----------> HLS + snapshots over HTTP
 ```
 
-FFmpeg remuxes H.264 without re-encoding (`-c copy`). Bottleneck is network, not CPU — runs fine on a Pi.
+FFmpeg remuxes H.264 without re-encoding (`-c copy`) for HLS segments. Snapshots are decoded at 1 fps. Runs fine on a Pi.
 
 ## Services
 
 | Service | Image | Description |
 |---------|-------|-------------|
-| `chopper_cam_1` | Alpine + FFmpeg | RTSP to HLS segmenter (one per camera) |
-| `emitter` | Rust (Alpine) | Watches output dirs, publishes MQTT on new segments |
+| `chopper_cam_1` | Alpine + FFmpeg | RTSP to HLS segments + JPEG snapshots (one per camera) |
+| `emitter` | Rust (Alpine) | Watches output dirs, publishes MQTT on new segments and snapshots |
 | `mqtt` | RabbitMQ + MQTT plugin | Message broker with management UI on `:15672` |
-| `nginx` | Nginx (Alpine) | Serves HLS files over HTTP on `:8080` |
+| `nginx` | Nginx (Alpine) | Serves HLS files and snapshots over HTTP on `:8080` |
 
 ## Quick start
 
@@ -31,6 +31,7 @@ ahoy docker up         # start all services
 ```
 
 HLS stream available at `http://<host-ip>:8080/cam1/stream.m3u8`
+Latest snapshot at `http://<host-ip>:8080/cam1/snapshots/snap_<epoch>.jpg`
 RabbitMQ management at `http://localhost:15672` (guest/guest)
 
 ## Configuration
@@ -45,17 +46,47 @@ RabbitMQ management at `http://localhost:15672` (guest/guest)
 
 ## MQTT events
 
-Each new `.ts` segment triggers a message on topic `<prefix>/<camera_id>/segment`:
+### Segment events
+
+Topic: `<prefix>/<camera_id>/segment`
 
 ```json
 {
   "camera_id": "cam1",
-  "segment": "segment_042.ts",
+  "segment": "segment_1711195200.ts",
   "playlist": "http://192.168.1.237:8080/cam1/stream.m3u8",
-  "segment_url": "http://192.168.1.237:8080/cam1/segment_042.ts",
+  "segment_url": "http://192.168.1.237:8080/cam1/segment_1711195200.ts",
+  "segment_epoch": 1711195200,
   "timestamp": "2026-03-23T12:00:00+00:00"
 }
 ```
+
+### Snapshot events
+
+Topic: `<prefix>/<camera_id>/snapshot`
+
+```json
+{
+  "camera_id": "cam1",
+  "snapshot": "snap_1711195203.jpg",
+  "snapshot_url": "http://192.168.1.237:8080/cam1/snapshots/snap_1711195203.jpg",
+  "snapshot_epoch": 1711195203,
+  "segment": "segment_1711195200.ts",
+  "segment_url": "http://192.168.1.237:8080/cam1/segment_1711195200.ts",
+  "segment_epoch": 1711195200,
+  "timestamp": "2026-03-23T12:00:03+00:00"
+}
+```
+
+Snapshot-to-segment matching: the snapshot epoch is rounded down to the nearest 10-second boundary to find its parent segment.
+
+## File naming
+
+Segments and snapshots use Unix epoch timestamps:
+- `segment_1711195200.ts` — segment starting at epoch 1711195200
+- `snap_1711195203.jpg` — snapshot taken at epoch 1711195203
+
+The playlist keeps 360 segments (1 hour of rewind). Old segments are retained on disk.
 
 ## Adding cameras
 
@@ -79,6 +110,7 @@ Add `CAM2_RTSP_URL` to `.env`. The emitter automatically picks up new subdirecto
 | Command | Description |
 |---------|-------------|
 | `ahoy setup` | Install pre-commit hooks |
+| `ahoy clean` | Remove all segments and snapshots from the output folder |
 | `ahoy docker up` | Start containers |
 | `ahoy docker stop` | Stop containers (non-destructive) |
 | `ahoy docker build` | Build containers |
@@ -107,5 +139,10 @@ nginx/                     # Nginx HLS server image
 .ahoy/docker.ahoy.yml      # Docker commands
 .env.example                # Environment template
 docker-compose.yml          # Service definitions
-output/                     # HLS segments per camera (gitignored)
+output/                     # Per-camera HLS segments + snapshots (gitignored)
+  cam1/
+    segment_<epoch>.ts
+    stream.m3u8
+    snapshots/
+      snap_<epoch>.jpg
 ```
