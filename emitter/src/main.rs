@@ -71,68 +71,72 @@ fn main() {
             };
 
             match ext {
-                "ts" => {
-                    let camera_id = match extract_camera_id(path) {
-                        Some(id) => id,
-                        None => continue,
-                    };
-
-                    let epoch = match extract_epoch(&filename, "segment_") {
-                        Some(e) => e,
-                        None => continue,
-                    };
-
-                    let base = hls_base_url.trim_end_matches('/');
-                    let event = SegmentEvent {
-                        playlist: format!("{base}/{camera_id}/stream.m3u8"),
-                        segment_url: format!("{base}/{camera_id}/{filename}"),
-                        camera_id: camera_id.clone(),
-                        segment: filename,
-                        segment_epoch: epoch,
-                        timestamp: Utc::now().to_rfc3339(),
-                    };
-
-                    let topic = format!("{topic_prefix}/{camera_id}/segment");
-                    publish(&client, &topic, &event);
-                }
-                "jpg" => {
-                    let camera_id = match path
-                        .parent()
-                        .and_then(|p| p.parent())
-                        .and_then(|p| p.file_name())
-                        .and_then(|f| f.to_str())
-                    {
-                        Some(id) => id.to_string(),
-                        None => continue,
-                    };
-
-                    let snap_epoch = match extract_epoch(&filename, "snap_") {
-                        Some(e) => e,
-                        None => continue,
-                    };
-
-                    let seg_epoch = snap_epoch - (snap_epoch % segment_duration);
-                    let segment_name = format!("segment_{seg_epoch}.ts");
-
-                    let base = hls_base_url.trim_end_matches('/');
-                    let event = SnapshotEvent {
-                        snapshot_url: format!("{base}/{camera_id}/snapshots/{filename}"),
-                        segment_url: format!("{base}/{camera_id}/{segment_name}"),
-                        camera_id: camera_id.clone(),
-                        snapshot: filename,
-                        snapshot_epoch: snap_epoch,
-                        segment: segment_name,
-                        segment_epoch: seg_epoch,
-                        timestamp: Utc::now().to_rfc3339(),
-                    };
-
-                    let topic = format!("{topic_prefix}/{camera_id}/snapshot");
-                    publish(&client, &topic, &event);
-                }
-                _ => continue,
+                "ts" => handle_segment(path, &filename, &hls_base_url, &topic_prefix, &client),
+                "jpg" => handle_snapshot(path, &filename, &hls_base_url, &topic_prefix, segment_duration, &client),
+                _ => {}
             }
         }
     }
+}
+
+fn handle_segment(path: &Path, filename: &str, base_url: &str, topic_prefix: &str, client: &Client) {
+    let camera_id = match extract_camera_id(path) {
+        Some(id) => id,
+        None => return,
+    };
+
+    let epoch = match extract_epoch(filename, "segment_") {
+        Some(e) => e,
+        None => return,
+    };
+
+    let base = base_url.trim_end_matches('/');
+    let event = SegmentEvent {
+        playlist: format!("{base}/{camera_id}/stream.m3u8"),
+        segment_url: format!("{base}/{camera_id}/{filename}"),
+        camera_id: camera_id.clone(),
+        segment: filename.to_string(),
+        segment_epoch: epoch,
+        timestamp: Utc::now().to_rfc3339(),
+    };
+
+    let topic = format!("{topic_prefix}/{camera_id}/segment");
+    publish(client, &topic, &event);
+}
+
+fn handle_snapshot(path: &Path, filename: &str, base_url: &str, topic_prefix: &str, segment_duration: u64, client: &Client) {
+    let camera_id = match path
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.file_name())
+        .and_then(|f| f.to_str())
+    {
+        Some(id) => id.to_string(),
+        None => return,
+    };
+
+    let snap_epoch = match extract_epoch(filename, "snap_") {
+        Some(e) => e,
+        None => return,
+    };
+
+    let seg_epoch = snap_epoch - (snap_epoch % segment_duration);
+    let segment_name = format!("segment_{seg_epoch}.ts");
+
+    let base = base_url.trim_end_matches('/');
+    let event = SnapshotEvent {
+        snapshot_url: format!("{base}/{camera_id}/snapshots/{filename}"),
+        segment_url: format!("{base}/{camera_id}/{segment_name}"),
+        camera_id: camera_id.clone(),
+        snapshot: filename.to_string(),
+        snapshot_epoch: snap_epoch,
+        segment: segment_name,
+        segment_epoch: seg_epoch,
+        timestamp: Utc::now().to_rfc3339(),
+    };
+
+    let topic = format!("{topic_prefix}/{camera_id}/snapshot");
+    publish(client, &topic, &event);
 }
 
 fn extract_camera_id(path: &Path) -> Option<String> {
