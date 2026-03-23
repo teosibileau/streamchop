@@ -1,4 +1,7 @@
+mod events;
+
 use chrono::Utc;
+use events::{SegmentEvent, SnapshotEvent};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use rumqttc::{Client, MqttOptions, QoS};
 use serde::Serialize;
@@ -6,28 +9,6 @@ use std::env;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
-
-#[derive(Serialize)]
-struct SegmentEvent {
-    camera_id: String,
-    segment: String,
-    playlist: String,
-    segment_url: String,
-    segment_epoch: u64,
-    timestamp: String,
-}
-
-#[derive(Serialize)]
-struct SnapshotEvent {
-    camera_id: String,
-    snapshot: String,
-    snapshot_url: String,
-    snapshot_epoch: u64,
-    segment: String,
-    segment_url: String,
-    segment_epoch: u64,
-    timestamp: String,
-}
 
 fn main() {
     let mqtt_host = env::var("MQTT_HOST").expect("MQTT_HOST is required");
