@@ -1,0 +1,48 @@
+name: Emitter
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'emitter/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'emitter/**'
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}/emitter
+
+jobs:
+  rust-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --manifest-path emitter/Cargo.toml
+
+  publish:
+    needs: rust-test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./emitter
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
