@@ -101,7 +101,10 @@ mod tests {
     fn test_extract_camera_id_from_snapshots_dir() {
         let snap_path = Path::new("/output/cam2/snapshots/snap_1711195203.jpg");
         let snapshots_dir = snap_path.parent().unwrap();
-        assert_eq!(Handler::extract_camera_id(snapshots_dir), Some("cam2".to_string()));
+        assert_eq!(
+            Handler::extract_camera_id(snapshots_dir),
+            Some("cam2".to_string())
+        );
     }
 
     #[test]
@@ -112,17 +115,26 @@ mod tests {
 
     #[test]
     fn test_extract_epoch_segment() {
-        assert_eq!(Handler::extract_epoch("segment_1711195200.ts", "segment_"), Some(1711195200));
+        assert_eq!(
+            Handler::extract_epoch("segment_1711195200.ts", "segment_"),
+            Some(1711195200)
+        );
     }
 
     #[test]
     fn test_extract_epoch_snapshot() {
-        assert_eq!(Handler::extract_epoch("snap_1711195203.jpg", "snap_"), Some(1711195203));
+        assert_eq!(
+            Handler::extract_epoch("snap_1711195203.jpg", "snap_"),
+            Some(1711195203)
+        );
     }
 
     #[test]
     fn test_extract_epoch_wrong_prefix() {
-        assert_eq!(Handler::extract_epoch("segment_1711195200.ts", "snap_"), None);
+        assert_eq!(
+            Handler::extract_epoch("segment_1711195200.ts", "snap_"),
+            None
+        );
     }
 
     #[test]

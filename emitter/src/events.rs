@@ -43,7 +43,10 @@ mod tests {
         assert_eq!(json["segment"], "segment_1711195200.ts");
         assert_eq!(json["segment_epoch"], 1711195200);
         assert_eq!(json["playlist"], "http://localhost:8080/cam1/stream.m3u8");
-        assert_eq!(json["segment_url"], "http://localhost:8080/cam1/segment_1711195200.ts");
+        assert_eq!(
+            json["segment_url"],
+            "http://localhost:8080/cam1/segment_1711195200.ts"
+        );
     }
 
     #[test]
@@ -91,7 +94,14 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        for field in ["camera_id", "segment", "playlist", "segment_url", "segment_epoch", "timestamp"] {
+        for field in [
+            "camera_id",
+            "segment",
+            "playlist",
+            "segment_url",
+            "segment_epoch",
+            "timestamp",
+        ] {
             assert!(parsed.get(field).is_some(), "missing field: {field}");
         }
     }
@@ -112,7 +122,16 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        for field in ["camera_id", "snapshot", "snapshot_url", "snapshot_epoch", "segment", "segment_url", "segment_epoch", "timestamp"] {
+        for field in [
+            "camera_id",
+            "snapshot",
+            "snapshot_url",
+            "snapshot_epoch",
+            "segment",
+            "segment_url",
+            "segment_epoch",
+            "timestamp",
+        ] {
             assert!(parsed.get(field).is_some(), "missing field: {field}");
         }
     }

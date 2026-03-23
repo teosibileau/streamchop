@@ -52,7 +52,10 @@ impl MqttPublisher {
         };
 
         debug!("Publishing to {topic}: {payload}");
-        if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload.as_bytes()) {
+        if let Err(e) = self
+            .client
+            .publish(&topic, QoS::AtLeastOnce, false, payload.as_bytes())
+        {
             error!("MQTT publish error: {e}");
         }
     }

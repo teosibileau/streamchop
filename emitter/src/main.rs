@@ -25,7 +25,10 @@ fn main() {
         .watch(Path::new(&config.watch_dir), RecursiveMode::Recursive)
         .expect("Failed to watch output directory");
 
-    info!("Watching {} for new segments and snapshots...", config.watch_dir);
+    info!(
+        "Watching {} for new segments and snapshots...",
+        config.watch_dir
+    );
 
     for event in rx {
         let event = match event {
