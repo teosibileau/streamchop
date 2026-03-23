@@ -1,12 +1,13 @@
+mod config;
 mod events;
 
 use chrono::Utc;
+use config::Config;
 use events::{SegmentEvent, SnapshotEvent};
 use log::{debug, error, info, warn};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use rumqttc::{Client, MqttOptions, QoS};
 use serde::Serialize;
-use std::env;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -14,25 +15,13 @@ use std::time::Duration;
 fn main() {
     env_logger::init();
 
-    let mqtt_host = env::var("MQTT_HOST").expect("MQTT_HOST is required");
-    let mqtt_port: u16 = env::var("MQTT_PORT")
-        .unwrap_or_else(|_| "1883".to_string())
-        .parse()
-        .expect("MQTT_PORT must be a number");
-    let topic_prefix = env::var("MQTT_TOPIC_PREFIX").unwrap_or_else(|_| "streamchop".to_string());
-    let hls_base_url = env::var("HLS_BASE_URL").expect("HLS_BASE_URL is required");
-    let watch_dir = env::var("WATCH_DIR").unwrap_or_else(|_| "/output".to_string());
-    let segment_duration: u64 = env::var("HLS_TIME")
-        .unwrap_or_else(|_| "10".to_string())
-        .parse()
-        .expect("HLS_TIME must be a number");
+    let config = Config::from_env();
 
-    let mut mqtt_opts = MqttOptions::new("streamchop-emitter", &mqtt_host, mqtt_port);
+    let mut mqtt_opts = MqttOptions::new("streamchop-emitter", &config.mqtt_host, config.mqtt_port);
     mqtt_opts.set_keep_alive(Duration::from_secs(30));
 
     let (client, mut connection) = Client::new(mqtt_opts, 64);
 
-    // Spawn connection loop in background
     std::thread::spawn(move || {
         for notification in connection.iter() {
             if let Err(e) = notification {
@@ -45,10 +34,10 @@ fn main() {
 
     let mut watcher = notify::recommended_watcher(tx).expect("Failed to create file watcher");
     watcher
-        .watch(Path::new(&watch_dir), RecursiveMode::Recursive)
+        .watch(Path::new(&config.watch_dir), RecursiveMode::Recursive)
         .expect("Failed to watch output directory");
 
-    info!("Watching {watch_dir} for new segments and snapshots...");
+    info!("Watching {} for new segments and snapshots...", config.watch_dir);
 
     for event in rx {
         let event = match event {
@@ -71,15 +60,15 @@ fn main() {
             };
 
             match ext {
-                "ts" => handle_segment(path, &filename, &hls_base_url, &topic_prefix, &client),
-                "jpg" => handle_snapshot(path, &filename, &hls_base_url, &topic_prefix, segment_duration, &client),
+                "ts" => handle_segment(path, &filename, &config, &client),
+                "jpg" => handle_snapshot(path, &filename, &config, &client),
                 _ => {}
             }
         }
     }
 }
 
-fn handle_segment(path: &Path, filename: &str, base_url: &str, topic_prefix: &str, client: &Client) {
+fn handle_segment(path: &Path, filename: &str, config: &Config, client: &Client) {
     let camera_id = match extract_camera_id(path) {
         Some(id) => id,
         None => return,
@@ -90,7 +79,7 @@ fn handle_segment(path: &Path, filename: &str, base_url: &str, topic_prefix: &st
         None => return,
     };
 
-    let base = base_url.trim_end_matches('/');
+    let base = config.hls_base_url.trim_end_matches('/');
     let event = SegmentEvent {
         playlist: format!("{base}/{camera_id}/stream.m3u8"),
         segment_url: format!("{base}/{camera_id}/{filename}"),
@@ -100,11 +89,11 @@ fn handle_segment(path: &Path, filename: &str, base_url: &str, topic_prefix: &st
         timestamp: Utc::now().to_rfc3339(),
     };
 
-    let topic = format!("{topic_prefix}/{camera_id}/segment");
+    let topic = format!("{}/{camera_id}/segment", config.topic_prefix);
     publish(client, &topic, &event);
 }
 
-fn handle_snapshot(path: &Path, filename: &str, base_url: &str, topic_prefix: &str, segment_duration: u64, client: &Client) {
+fn handle_snapshot(path: &Path, filename: &str, config: &Config, client: &Client) {
     let camera_id = match path
         .parent()
         .and_then(|p| p.parent())
@@ -120,10 +109,10 @@ fn handle_snapshot(path: &Path, filename: &str, base_url: &str, topic_prefix: &s
         None => return,
     };
 
-    let seg_epoch = snap_epoch - (snap_epoch % segment_duration);
+    let seg_epoch = snap_epoch - (snap_epoch % config.segment_duration);
     let segment_name = format!("segment_{seg_epoch}.ts");
 
-    let base = base_url.trim_end_matches('/');
+    let base = config.hls_base_url.trim_end_matches('/');
     let event = SnapshotEvent {
         snapshot_url: format!("{base}/{camera_id}/snapshots/{filename}"),
         segment_url: format!("{base}/{camera_id}/{segment_name}"),
@@ -135,7 +124,7 @@ fn handle_snapshot(path: &Path, filename: &str, base_url: &str, topic_prefix: &s
         timestamp: Utc::now().to_rfc3339(),
     };
 
-    let topic = format!("{topic_prefix}/{camera_id}/snapshot");
+    let topic = format!("{}/{camera_id}/snapshot", config.topic_prefix);
     publish(client, &topic, &event);
 }
 
