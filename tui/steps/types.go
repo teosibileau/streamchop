@@ -8,3 +8,10 @@ type ConfiguredCamera struct {
 	Creds  onvif.Credentials
 	Stream onvif.StreamInfo
 }
+
+// MQTTConfig holds the MQTT broker configuration from the TUI.
+type MQTTConfig struct {
+	Enabled bool
+	Host    string
+	Port    string
+}

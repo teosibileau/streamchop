@@ -24,16 +24,20 @@ type generateDoneMsg struct {
 
 // GenerateModel handles the final confirmation and file generation step.
 type GenerateModel struct {
-	state    generateState
-	cameras  []ConfiguredCamera
-	err      error
-	done     bool
+	state      generateState
+	cameras    []ConfiguredCamera
+	mqttConfig MQTTConfig
+	hostIP     string
+	err        error
+	done       bool
 }
 
-func NewGenerateModel(cameras []ConfiguredCamera) GenerateModel {
+func NewGenerateModel(cameras []ConfiguredCamera, mqttConfig MQTTConfig, hostIP string) GenerateModel {
 	return GenerateModel{
-		state:   generateConfirm,
-		cameras: cameras,
+		state:      generateConfirm,
+		cameras:    cameras,
+		mqttConfig: mqttConfig,
+		hostIP:     hostIP,
 	}
 }
 
@@ -59,7 +63,7 @@ func (m GenerateModel) Update(msg tea.Msg) (GenerateModel, tea.Cmd) {
 			switch msg.String() {
 			case "enter", "y":
 				m.state = generateWriting
-				return m, generateFiles(m.cameras)
+				return m, generateFiles(m.cameras, m.mqttConfig, m.hostIP)
 			case "q", "n":
 				m.done = true
 				return m, nil
@@ -68,7 +72,7 @@ func (m GenerateModel) Update(msg tea.Msg) (GenerateModel, tea.Cmd) {
 			switch msg.String() {
 			case "r":
 				m.state = generateWriting
-				return m, generateFiles(m.cameras)
+				return m, generateFiles(m.cameras, m.mqttConfig, m.hostIP)
 			case "q":
 				m.done = true
 				return m, nil
@@ -85,12 +89,20 @@ func (m GenerateModel) View() string {
 	switch m.state {
 	case generateConfirm:
 		title := lipgloss.NewStyle().Bold(true).Render("Summary")
-		b.WriteString(fmt.Sprintf("\n  %s\n\n", title))
+		fmt.Fprintf(&b, "\n  %s\n\n", title)
 
 		for i, cam := range m.cameras {
-			b.WriteString(fmt.Sprintf("  Camera %d: %s (%s)\n", i+1, cam.Camera.Name, cam.Camera.IP))
-			b.WriteString(fmt.Sprintf("    Stream: %s\n", cam.Stream.ProfileName))
-			b.WriteString(fmt.Sprintf("    URI:    %s\n\n", cam.Stream.URI))
+			fmt.Fprintf(&b, "  Camera %d: %s (%s)\n", i+1, cam.Camera.Name, cam.Camera.IP)
+			fmt.Fprintf(&b, "    Stream: %s\n", cam.Stream.ProfileName)
+			fmt.Fprintf(&b, "    URI:    %s\n\n", cam.Stream.URI)
+		}
+
+		fmt.Fprintf(&b, "  HLS Base URL: http://%s:8080\n\n", m.hostIP)
+
+		if m.mqttConfig.Enabled {
+			fmt.Fprintf(&b, "  MQTT Broker: %s:%s\n\n", m.mqttConfig.Host, m.mqttConfig.Port)
+		} else {
+			b.WriteString("  MQTT: disabled (emitter will not be included)\n\n")
 		}
 
 		b.WriteString("  Files to write:\n")
@@ -103,7 +115,7 @@ func (m GenerateModel) View() string {
 
 	case generateDone:
 		ok := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
-		b.WriteString(fmt.Sprintf("\n  %s\n\n", ok.Render("Setup complete!")))
+		fmt.Fprintf(&b, "\n  %s\n\n", ok.Render("Setup complete!"))
 		b.WriteString("  Generated:\n")
 		b.WriteString("    - docker-compose.dist.yml\n")
 		b.WriteString("    - .env\n\n")
@@ -113,7 +125,7 @@ func (m GenerateModel) View() string {
 
 	case generateError:
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-		b.WriteString(fmt.Sprintf("\n  %s\n\n", errStyle.Render(m.err.Error())))
+		fmt.Fprintf(&b, "\n  %s\n\n", errStyle.Render(m.err.Error()))
 		b.WriteString("  (r) Retry  (q) Quit\n")
 	}
 
@@ -122,7 +134,7 @@ func (m GenerateModel) View() string {
 
 func (m GenerateModel) Done() bool { return m.done }
 
-func generateFiles(cameras []ConfiguredCamera) tea.Cmd {
+func generateFiles(cameras []ConfiguredCamera, mqttConfig MQTTConfig, hostIP string) tea.Cmd {
 	return func() tea.Msg {
 		cameraConfigs := make([]compose.CameraConfig, len(cameras))
 		for i, cam := range cameras {
@@ -133,14 +145,18 @@ func generateFiles(cameras []ConfiguredCamera) tea.Cmd {
 			}
 		}
 
-		if err := compose.GenerateDistCompose("docker-compose.dist.yml", cameraConfigs); err != nil {
+		if err := compose.GenerateDistCompose("docker-compose.dist.yml", cameraConfigs, mqttConfig.Enabled); err != nil {
 			return generateDoneMsg{err: fmt.Errorf("write compose file: %w", err)}
 		}
 
 		envConfig := compose.EnvConfig{
-			GHCRRepo: "ghcr.io/teosibileau/streamchop",
-			Tag:      "latest",
-			Cameras:  cameraConfigs,
+			GHCRRepo:    "ghcr.io/teosibileau/streamchop",
+			Tag:         "latest",
+			Cameras:     cameraConfigs,
+			IncludeMQTT: mqttConfig.Enabled,
+			MQTTHost:    mqttConfig.Host,
+			MQTTPort:    mqttConfig.Port,
+			HLSBaseURL:  fmt.Sprintf("http://%s:8080", hostIP),
 		}
 
 		if err := compose.GenerateEnv(".env", envConfig); err != nil {

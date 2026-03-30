@@ -156,7 +156,7 @@ func ParseExistingDist(composePath, envPath string) []string {
 func extractIPFromRTSPURL(rtspURL string) string {
 	// rtsp://user:pass@192.168.1.100:554/stream
 	rtspURL = strings.TrimPrefix(rtspURL, "rtsp://")
-	if idx := strings.Index(rtspURL, "@"); idx >= 0 {
+	if idx := strings.LastIndex(rtspURL, "@"); idx >= 0 {
 		rtspURL = rtspURL[idx+1:]
 	}
 	if idx := strings.Index(rtspURL, ":"); idx >= 0 {

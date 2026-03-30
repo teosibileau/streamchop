@@ -17,7 +17,7 @@ func TestGenerateModelCancel(t *testing.T) {
 		},
 	}
 
-	m := NewGenerateModel(cameras)
+	m := NewGenerateModel(cameras, MQTTConfig{Enabled: true, Host: "mqtt", Port: "1883"}, "192.168.1.5")
 
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	if !m.Done() {
@@ -34,7 +34,7 @@ func TestGenerateModelConfirmTriggersWrite(t *testing.T) {
 		},
 	}
 
-	m := NewGenerateModel(cameras)
+	m := NewGenerateModel(cameras, MQTTConfig{Enabled: true, Host: "mqtt", Port: "1883"}, "192.168.1.5")
 
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	if m.state != generateWriting {
