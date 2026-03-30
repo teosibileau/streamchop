@@ -1,0 +1,18 @@
+[Unit]
+Description=StreamChop
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=notify
+WorkingDirectory=__PWD__
+ExecStart=__PWD__/.systemd/watchdog.sh
+ExecStop=/usr/bin/docker compose -f docker-compose.dist.yml down
+Restart=on-failure
+RestartSec=5s
+WatchdogSec=30s
+NotifyAccess=all
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target
