@@ -118,16 +118,16 @@ func (m CredentialsModel) View() string {
 	title := lipgloss.NewStyle().Bold(true).Render(
 		fmt.Sprintf("Credentials for %s (%s)", cam.Name, cam.IP))
 
-	b.WriteString(fmt.Sprintf("\n  %s\n", title))
-	b.WriteString(fmt.Sprintf("  Camera %d of %d\n\n", m.camIndex+1, len(m.cameras)))
-	b.WriteString(fmt.Sprintf("  Username: %s\n", m.username.View()))
-	b.WriteString(fmt.Sprintf("  Password: %s\n\n", m.password.View()))
+	fmt.Fprintf(&b, "\n  %s\n", title)
+	fmt.Fprintf(&b, "  Camera %d of %d\n\n", m.camIndex+1, len(m.cameras))
+	fmt.Fprintf(&b, "  Username: %s\n", m.username.View())
+	fmt.Fprintf(&b, "  Password: %s\n\n", m.password.View())
 
 	sameLabel := "[ ] Same for all cameras"
 	if m.sameForAll {
 		sameLabel = "[x] Same for all cameras"
 	}
-	b.WriteString(fmt.Sprintf("  %s\n\n", sameLabel))
+	fmt.Fprintf(&b, "  %s\n\n", sameLabel)
 	b.WriteString("  (tab) Switch field  (ctrl+a) Toggle same-for-all  (enter) Confirm\n")
 
 	return b.String()

@@ -54,18 +54,21 @@ const streamURIXML = `<?xml version="1.0" encoding="UTF-8"?>
 func TestGetStreamURIs(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body := make([]byte, r.ContentLength)
-		r.Body.Read(body)
+		if _, err := r.Body.Read(body); err != nil && err.Error() != "EOF" {
+			http.Error(w, "read error", http.StatusInternalServerError)
+			return
+		}
 		content := string(body)
 
 		w.Header().Set("Content-Type", "application/soap+xml")
 		switch {
 		case strings.Contains(content, "GetCapabilities"):
 			resp := strings.Replace(capabilitiesXML, "MEDIA_URL", "http://"+r.Host+"/onvif/media", 1)
-			w.Write([]byte(resp))
+			_, _ = w.Write([]byte(resp))
 		case strings.Contains(content, "GetProfiles"):
-			w.Write([]byte(profilesXML))
+			_, _ = w.Write([]byte(profilesXML))
 		case strings.Contains(content, "GetStreamUri"):
-			w.Write([]byte(streamURIXML))
+			_, _ = w.Write([]byte(streamURIXML))
 		default:
 			http.Error(w, "unknown request", http.StatusBadRequest)
 		}
@@ -139,12 +142,8 @@ func TestNormalizeRTSPURI(t *testing.T) {
 
 func TestFilterH264Profiles(t *testing.T) {
 	profiles := []profile{
-		{Token: "p1", Name: "Main", Video: struct {
-			Encoding string `xml:"Encoding"`
-		}{Encoding: "H264"}},
-		{Token: "p2", Name: "Sub", Video: struct {
-			Encoding string `xml:"Encoding"`
-		}{Encoding: "JPEG"}},
+		{Token: "p1", Name: "Main", Video: struct{ Encoding string }{Encoding: "H264"}},
+		{Token: "p2", Name: "Sub", Video: struct{ Encoding string }{Encoding: "JPEG"}},
 	}
 
 	streams := []StreamInfo{

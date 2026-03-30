@@ -177,8 +177,9 @@ func parseProfiles(data []byte) ([]profile, error) {
 				case "Name":
 					if depth == 2 { // direct child
 						var name string
-						decoder.DecodeElement(&name, &t)
-						p.Name = name
+						if err := decoder.DecodeElement(&name, &t); err == nil {
+							p.Name = name
+						}
 						depth-- // DecodeElement consumed the end element
 					}
 				case "VideoEncoderConfiguration":
@@ -194,8 +195,9 @@ func parseProfiles(data []byte) ([]profile, error) {
 							vecDepth++
 							if vt.Name.Local == "Encoding" {
 								var enc string
-								decoder.DecodeElement(&enc, &vt)
-								p.Video.Encoding = enc
+								if err := decoder.DecodeElement(&enc, &vt); err == nil {
+									p.Video.Encoding = enc
+								}
 								vecDepth--
 							}
 						case xml.EndElement:
@@ -250,7 +252,7 @@ func soapCall(endpoint string, body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {

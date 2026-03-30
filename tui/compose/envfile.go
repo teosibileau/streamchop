@@ -9,9 +9,13 @@ import (
 
 // EnvConfig holds the values to write to .env.
 type EnvConfig struct {
-	GHCRRepo string
-	Tag      string
-	Cameras  []CameraConfig
+	GHCRRepo    string
+	Tag         string
+	Cameras     []CameraConfig
+	IncludeMQTT bool
+	MQTTHost    string
+	MQTTPort    string
+	HLSBaseURL  string
 }
 
 // GenerateEnv writes or updates the .env file, preserving existing values
@@ -22,6 +26,13 @@ func GenerateEnv(path string, config EnvConfig) error {
 	managed := make(map[string]string)
 	managed["GHCR_REPO"] = config.GHCRRepo
 	managed["TAG"] = config.Tag
+	if config.HLSBaseURL != "" {
+		managed["HLS_BASE_URL"] = config.HLSBaseURL
+	}
+	if config.IncludeMQTT {
+		managed["MQTT_HOST"] = config.MQTTHost
+		managed["MQTT_PORT"] = config.MQTTPort
+	}
 	for _, cam := range config.Cameras {
 		managed[cam.EnvVar] = cam.RTSPURL
 	}
@@ -40,7 +51,7 @@ func GenerateEnv(path string, config EnvConfig) error {
 		}
 	}
 
-	return writeEnv(path, existing, config.Cameras)
+	return writeEnv(path, existing, config.Cameras, config.IncludeMQTT)
 }
 
 func readExistingEnv(path string) map[string]string {
@@ -50,7 +61,7 @@ func readExistingEnv(path string) map[string]string {
 	if err != nil {
 		return env
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -67,42 +78,50 @@ func readExistingEnv(path string) map[string]string {
 	return env
 }
 
-func writeEnv(path string, env map[string]string, cameras []CameraConfig) error {
+func writeEnv(path string, env map[string]string, cameras []CameraConfig, includeMQTT bool) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("create env file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	w := bufio.NewWriter(f)
-
-	// Camera RTSP URLs
-	fmt.Fprintln(w, "# Camera RTSP URLs")
-	for _, cam := range cameras {
-		fmt.Fprintf(w, "%s=%s\n", cam.EnvVar, env[cam.EnvVar])
+	p := func(format string, args ...interface{}) {
+		_, _ = fmt.Fprintf(w, format, args...)
+	}
+	ln := func(args ...interface{}) {
+		_, _ = fmt.Fprintln(w, args...)
 	}
 
-	// MQTT
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "# MQTT broker")
-	writeEnvVar(w, env, "MQTT_HOST", "mqtt")
-	writeEnvVar(w, env, "MQTT_PORT", "1883")
-	writeEnvVar(w, env, "MQTT_TOPIC_PREFIX", "streamchop")
+	// Camera RTSP URLs
+	ln("# Camera RTSP URLs")
+	for _, cam := range cameras {
+		p("%s=%s\n", cam.EnvVar, env[cam.EnvVar])
+	}
+
+	// MQTT (only if enabled)
+	if includeMQTT {
+		ln()
+		ln("# MQTT broker")
+		writeEnvVar(w, env, "MQTT_HOST", "mqtt")
+		writeEnvVar(w, env, "MQTT_PORT", "1883")
+		writeEnvVar(w, env, "MQTT_TOPIC_PREFIX", "streamchop")
+	}
 
 	// HLS
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "# Base URL for HLS file access")
+	ln()
+	ln("# Base URL for HLS file access")
 	writeEnvVar(w, env, "HLS_BASE_URL", "http://nginx:80")
 
 	// GHCR
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "# GHCR image repository")
-	fmt.Fprintf(w, "GHCR_REPO=%s\n", env["GHCR_REPO"])
-	fmt.Fprintf(w, "TAG=%s\n", env["TAG"])
+	ln()
+	ln("# GHCR image repository")
+	p("GHCR_REPO=%s\n", env["GHCR_REPO"])
+	p("TAG=%s\n", env["TAG"])
 
 	// Systemd
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "# Systemd service file name")
+	ln()
+	ln("# Systemd service file name")
 	writeEnvVar(w, env, "SERVICE_FILE", "streamchop.service")
 
 	return w.Flush()
@@ -113,7 +132,7 @@ func writeEnvVar(w *bufio.Writer, env map[string]string, key, defaultVal string)
 	if !ok || val == "" {
 		val = defaultVal
 	}
-	fmt.Fprintf(w, "%s=%s\n", key, val)
+	_, _ = fmt.Fprintf(w, "%s=%s\n", key, val)
 }
 
 // ParseExistingDist reads an existing docker-compose.dist.yml and .env to

@@ -105,7 +105,7 @@ func ProbeAddress(ip string) ([]Camera, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dial: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := conn.SetDeadline(time.Now().Add(probeTimeout)); err != nil {
 		return nil, fmt.Errorf("set deadline: %w", err)
@@ -124,7 +124,7 @@ func probeInterface(localIP net.IP, multicast *net.UDPAddr, msg []byte) ([]Camer
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := conn.SetDeadline(time.Now().Add(probeTimeout)); err != nil {
 		return nil, err

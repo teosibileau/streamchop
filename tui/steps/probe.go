@@ -133,13 +133,13 @@ func (m ProbeModel) View() string {
 	var b strings.Builder
 
 	if m.state == probeRunning {
-		b.WriteString(fmt.Sprintf("\n  %s Probing cameras for RTSP streams... (%d remaining)\n",
-			m.spinner.View(), m.pending))
+		fmt.Fprintf(&b, "\n  %s Probing cameras for RTSP streams... (%d remaining)\n",
+			m.spinner.View(), m.pending)
 		return b.String()
 	}
 
 	title := lipgloss.NewStyle().Bold(true).Render("Probe Results")
-	b.WriteString(fmt.Sprintf("\n  %s\n\n", title))
+	fmt.Fprintf(&b, "\n  %s\n\n", title)
 
 	okStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
@@ -151,15 +151,15 @@ func (m ProbeModel) View() string {
 		}
 
 		if r.err != nil {
-			b.WriteString(fmt.Sprintf("  %s%s %s\n",
-				cursor, errStyle.Render("✗"), r.camera.Name))
-			b.WriteString(fmt.Sprintf("      %s\n", errStyle.Render(r.err.Error())))
+			fmt.Fprintf(&b, "  %s%s %s\n",
+				cursor, errStyle.Render("✗"), r.camera.Name)
+			fmt.Fprintf(&b, "      %s\n", errStyle.Render(r.err.Error()))
 		} else {
 			stream := r.streams[r.chosen]
 			profileInfo := fmt.Sprintf("[%d/%d] %s", r.chosen+1, len(r.streams), stream.ProfileName)
-			b.WriteString(fmt.Sprintf("  %s%s %s %s\n",
-				cursor, okStyle.Render("✓"), r.camera.Name, profileInfo))
-			b.WriteString(fmt.Sprintf("      %s\n", stream.URI))
+			fmt.Fprintf(&b, "  %s%s %s %s\n",
+				cursor, okStyle.Render("✓"), r.camera.Name, profileInfo)
+			fmt.Fprintf(&b, "      %s\n", stream.URI)
 		}
 	}
 

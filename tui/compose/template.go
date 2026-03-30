@@ -30,8 +30,8 @@ type Service struct {
 }
 
 // GenerateDistCompose writes docker-compose.dist.yml with one chopper per camera
-// plus shared emitter and nginx services.
-func GenerateDistCompose(path string, cameras []CameraConfig) error {
+// plus shared nginx and optionally emitter services.
+func GenerateDistCompose(path string, cameras []CameraConfig, includeEmitter bool) error {
 	services := make(map[string]Service)
 
 	for _, cam := range cameras {
@@ -48,20 +48,22 @@ func GenerateDistCompose(path string, cameras []CameraConfig) error {
 		}
 	}
 
-	services["emitter"] = Service{
-		Image:     "${GHCR_REPO}/emitter:${TAG:-latest}",
-		Container: "streamchop-emitter",
-		Environment: []string{
-			"MQTT_HOST=${MQTT_HOST}",
-			"MQTT_PORT=${MQTT_PORT:-1883}",
-			"MQTT_TOPIC_PREFIX=${MQTT_TOPIC_PREFIX:-streamchop}",
-			"HLS_BASE_URL=${HLS_BASE_URL}",
-			"WATCH_DIR=/output",
-			"RUST_LOG=info",
-		},
-		Volumes: []string{
-			"./output:/output:ro",
-		},
+	if includeEmitter {
+		services["emitter"] = Service{
+			Image:     "${GHCR_REPO}/emitter:${TAG:-latest}",
+			Container: "streamchop-emitter",
+			Environment: []string{
+				"MQTT_HOST=${MQTT_HOST}",
+				"MQTT_PORT=${MQTT_PORT:-1883}",
+				"MQTT_TOPIC_PREFIX=${MQTT_TOPIC_PREFIX:-streamchop}",
+				"HLS_BASE_URL=${HLS_BASE_URL}",
+				"WATCH_DIR=/output",
+				"RUST_LOG=info",
+			},
+			Volumes: []string{
+				"./output:/output:ro",
+			},
+		}
 	}
 
 	services["nginx"] = Service{

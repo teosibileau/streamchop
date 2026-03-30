@@ -37,52 +37,11 @@ type probeMatch struct {
 	} `xml:"Body"`
 }
 
-// ONVIF SOAP response types
-// Namespace constants for ONVIF XML parsing
-const (
-	nsSOAP  = "http://www.w3.org/2003/05/soap-envelope"
-	nsDevice = "http://www.onvif.org/ver10/device/wsdl"
-	nsMedia  = "http://www.onvif.org/ver10/media/wsdl"
-	nsSchema = "http://www.onvif.org/ver10/schema"
-)
-
-type capabilitiesResponse struct {
-	XMLName xml.Name `xml:"Envelope"`
-	Body    struct {
-		Response struct {
-			Capabilities struct {
-				Media struct {
-					XAddr string `xml:"XAddr"`
-				} `xml:"Media"`
-			} `xml:"Capabilities"`
-		} `xml:"GetCapabilitiesResponse"`
-	} `xml:"Body"`
-}
-
+// profile holds parsed ONVIF media profile data.
 type profile struct {
-	Token string `xml:"token,attr"`
-	Name  string `xml:"Name"`
+	Token string
+	Name  string
 	Video struct {
-		Encoding string `xml:"Encoding"`
-	} `xml:"VideoEncoderConfiguration"`
-}
-
-type profilesResponse struct {
-	XMLName xml.Name `xml:"Envelope"`
-	Body    struct {
-		Response struct {
-			Profiles []profile `xml:"Profiles"`
-		} `xml:"GetProfilesResponse"`
-	} `xml:"Body"`
-}
-
-type streamURIResponse struct {
-	XMLName xml.Name `xml:"Envelope"`
-	Body    struct {
-		Response struct {
-			MediaURI struct {
-				URI string `xml:"Uri"`
-			} `xml:"MediaUri"`
-		} `xml:"GetStreamUriResponse"`
-	} `xml:"Body"`
+		Encoding string
+	}
 }

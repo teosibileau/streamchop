@@ -16,7 +16,7 @@ func TestGenerateDistCompose(t *testing.T) {
 		{Index: 2, EnvVar: "CAM2_RTSP_URL", RTSPURL: "rtsp://admin:pass@192.168.1.11:554/stream1"},
 	}
 
-	if err := GenerateDistCompose(tmpFile, cameras); err != nil {
+	if err := GenerateDistCompose(tmpFile, cameras, true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -72,7 +72,7 @@ func TestGenerateDistComposeSingleCamera(t *testing.T) {
 		{Index: 1, EnvVar: "CAM1_RTSP_URL", RTSPURL: "rtsp://a:b@10.0.0.1:554/s"},
 	}
 
-	if err := GenerateDistCompose(tmpFile, cameras); err != nil {
+	if err := GenerateDistCompose(tmpFile, cameras, true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -88,5 +88,35 @@ func TestGenerateDistComposeSingleCamera(t *testing.T) {
 
 	if len(compose.Services) != 3 {
 		t.Errorf("expected 3 services (1 chopper + emitter + nginx), got %d", len(compose.Services))
+	}
+}
+
+func TestGenerateDistComposeWithoutEmitter(t *testing.T) {
+	tmpFile := t.TempDir() + "/docker-compose.dist.yml"
+
+	cameras := []CameraConfig{
+		{Index: 1, EnvVar: "CAM1_RTSP_URL", RTSPURL: "rtsp://a:b@10.0.0.1:554/s"},
+	}
+
+	if err := GenerateDistCompose(tmpFile, cameras, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+
+	var compose ComposeFile
+	if err := yaml.Unmarshal(data, &compose); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if _, ok := compose.Services["emitter"]; ok {
+		t.Error("emitter should not be present when includeEmitter is false")
+	}
+
+	if len(compose.Services) != 2 {
+		t.Errorf("expected 2 services (1 chopper + nginx), got %d", len(compose.Services))
 	}
 }

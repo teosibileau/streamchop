@@ -76,7 +76,7 @@ func (m SelectionModel) View() string {
 	var b strings.Builder
 
 	title := lipgloss.NewStyle().Bold(true).Render("Select cameras to configure")
-	b.WriteString(fmt.Sprintf("\n  %s\n\n", title))
+	fmt.Fprintf(&b, "\n  %s\n\n", title)
 
 	for i, cam := range m.cameras {
 		cursor := "  "
@@ -90,7 +90,7 @@ func (m SelectionModel) View() string {
 		}
 
 		label := fmt.Sprintf("%s (%s:%s)", cam.Name, cam.IP, cam.Port)
-		b.WriteString(fmt.Sprintf("  %s%s %s\n", cursor, checked, label))
+		fmt.Fprintf(&b, "  %s%s %s\n", cursor, checked, label)
 	}
 
 	b.WriteString("\n  (space) Toggle  (enter) Confirm  (j/k) Navigate\n")

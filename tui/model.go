@@ -15,6 +15,7 @@ const (
 	stepSelection
 	stepCredentials
 	stepProbe
+	stepMQTT
 	stepGenerate
 	stepDone
 )
@@ -25,10 +26,12 @@ type model struct {
 	selection   steps.SelectionModel
 	credentials steps.CredentialsModel
 	probe       steps.ProbeModel
+	mqtt        steps.MQTTModel
 	generate    steps.GenerateModel
 	cameras     []onvif.Camera
 	selected    []onvif.Camera
 	configured  []steps.ConfiguredCamera
+	hostIP      string
 	err         error
 }
 
@@ -95,7 +98,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.probe = updated
 		if m.probe.Done() {
 			m.configured = m.probe.Configured()
-			m.generate = steps.NewGenerateModel(m.configured)
+			// Detect host IP for HLS_BASE_URL
+			hostIP, err := steps.DetectHostIP()
+			if err != nil {
+				hostIP = "localhost"
+			}
+			m.hostIP = hostIP
+			m.mqtt = steps.NewMQTTModel(m.hostIP)
+			m.step = stepMQTT
+			return m, m.mqtt.Init()
+		}
+		return m, cmd
+
+	case stepMQTT:
+		updated, cmd := m.mqtt.Update(msg)
+		m.mqtt = updated
+		if m.mqtt.Done() {
+			m.generate = steps.NewGenerateModel(m.configured, m.mqtt.Config(), m.hostIP)
 			m.step = stepGenerate
 			return m, m.generate.Init()
 		}
@@ -124,6 +143,8 @@ func (m model) View() string {
 		return m.credentials.View()
 	case stepProbe:
 		return m.probe.View()
+	case stepMQTT:
+		return m.mqtt.View()
 	case stepGenerate:
 		return m.generate.View()
 	case stepDone:

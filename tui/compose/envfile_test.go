@@ -10,8 +10,12 @@ func TestGenerateEnv(t *testing.T) {
 	tmpFile := t.TempDir() + "/.env"
 
 	config := EnvConfig{
-		GHCRRepo: "ghcr.io/teosibileau/streamchop",
-		Tag:      "v1.0.0",
+		GHCRRepo:    "ghcr.io/teosibileau/streamchop",
+		Tag:         "v1.0.0",
+		IncludeMQTT: true,
+		MQTTHost:    "192.168.1.50",
+		MQTTPort:    "1883",
+		HLSBaseURL:  "http://192.168.1.5:8080",
 		Cameras: []CameraConfig{
 			{Index: 1, EnvVar: "CAM1_RTSP_URL", RTSPURL: "rtsp://admin:pass@192.168.1.10:554/stream1"},
 			{Index: 2, EnvVar: "CAM2_RTSP_URL", RTSPURL: "rtsp://admin:pass@192.168.1.11:554/stream1"},
@@ -34,7 +38,8 @@ func TestGenerateEnv(t *testing.T) {
 		"CAM2_RTSP_URL=rtsp://admin:pass@192.168.1.11:554/stream1",
 		"GHCR_REPO=ghcr.io/teosibileau/streamchop",
 		"TAG=v1.0.0",
-		"MQTT_HOST=mqtt",
+		"MQTT_HOST=192.168.1.50",
+		"HLS_BASE_URL=http://192.168.1.5:8080",
 		"SERVICE_FILE=streamchop.service",
 	}
 
@@ -59,8 +64,12 @@ CAM1_RTSP_URL=rtsp://old:old@192.168.1.99:554/old
 	}
 
 	config := EnvConfig{
-		GHCRRepo: "ghcr.io/teosibileau/streamchop",
-		Tag:      "latest",
+		GHCRRepo:    "ghcr.io/teosibileau/streamchop",
+		Tag:         "latest",
+		IncludeMQTT: true,
+		MQTTHost:    "new-broker",
+		MQTTPort:    "1885",
+		HLSBaseURL:  "http://192.168.1.5:8080",
 		Cameras: []CameraConfig{
 			{Index: 1, EnvVar: "CAM1_RTSP_URL", RTSPURL: "rtsp://new:new@192.168.1.10:554/new"},
 		},
@@ -77,11 +86,11 @@ CAM1_RTSP_URL=rtsp://old:old@192.168.1.99:554/old
 
 	content := string(data)
 
-	if !strings.Contains(content, "MQTT_HOST=custom-broker") {
-		t.Error("expected preserved MQTT_HOST")
+	if !strings.Contains(content, "MQTT_HOST=new-broker") {
+		t.Error("expected TUI-provided MQTT_HOST to override existing")
 	}
-	if !strings.Contains(content, "MQTT_PORT=1884") {
-		t.Error("expected preserved MQTT_PORT")
+	if !strings.Contains(content, "MQTT_PORT=1885") {
+		t.Error("expected TUI-provided MQTT_PORT to override existing")
 	}
 	if !strings.Contains(content, "SERVICE_FILE=custom.service") {
 		t.Error("expected preserved SERVICE_FILE")
@@ -91,6 +100,44 @@ CAM1_RTSP_URL=rtsp://old:old@192.168.1.99:554/old
 	}
 	if strings.Contains(content, "192.168.1.99") {
 		t.Error("old camera URL should be replaced")
+	}
+}
+
+func TestGenerateEnvWithoutMQTT(t *testing.T) {
+	tmpFile := t.TempDir() + "/.env"
+
+	config := EnvConfig{
+		GHCRRepo:    "ghcr.io/teosibileau/streamchop",
+		Tag:         "latest",
+		IncludeMQTT: false,
+		HLSBaseURL:  "http://192.168.1.5:8080",
+		Cameras: []CameraConfig{
+			{Index: 1, EnvVar: "CAM1_RTSP_URL", RTSPURL: "rtsp://admin:pass@192.168.1.10:554/stream1"},
+		},
+	}
+
+	if err := GenerateEnv(tmpFile, config); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+
+	content := string(data)
+
+	if strings.Contains(content, "MQTT_HOST") {
+		t.Error("MQTT_HOST should not be present when MQTT is disabled")
+	}
+	if strings.Contains(content, "MQTT_PORT") {
+		t.Error("MQTT_PORT should not be present when MQTT is disabled")
+	}
+	if !strings.Contains(content, "HLS_BASE_URL=http://192.168.1.5:8080") {
+		t.Error("expected HLS_BASE_URL with host IP")
+	}
+	if !strings.Contains(content, "CAM1_RTSP_URL") {
+		t.Error("expected camera URL")
 	}
 }
 
