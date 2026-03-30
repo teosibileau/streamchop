@@ -185,3 +185,49 @@ func TestExtractIPFromRTSPURL(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractCredsFromRTSPURL(t *testing.T) {
+	tests := []struct {
+		url      string
+		wantUser string
+		wantPass string
+	}{
+		{"rtsp://admin:pass@192.168.1.10:554/stream1", "admin", "pass"},
+		{"rtsp://user@192.168.1.20:554/stream1", "user", ""},
+		{"rtsp://192.168.1.30:554/stream1", "", ""},
+		{"rtsp://user:p@ss@10.0.0.1/s", "user", "p@ss"},
+	}
+
+	for _, tt := range tests {
+		user, pass := extractCredsFromRTSPURL(tt.url)
+		if user != tt.wantUser || pass != tt.wantPass {
+			t.Errorf("extractCredsFromRTSPURL(%q) = (%q, %q), want (%q, %q)",
+				tt.url, user, pass, tt.wantUser, tt.wantPass)
+		}
+	}
+}
+
+func TestParseExistingCreds(t *testing.T) {
+	dir := t.TempDir()
+	envFile := dir + "/.env"
+
+	env := `CAM1_RTSP_URL=rtsp://admin:pass@192.168.1.10:554/stream1
+CAM2_RTSP_URL=rtsp://user:secret@192.168.1.20:554/stream1
+MQTT_HOST=mqtt
+`
+	if err := os.WriteFile(envFile, []byte(env), 0644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	creds := ParseExistingCreds(envFile)
+
+	if len(creds) != 2 {
+		t.Fatalf("expected 2 cred entries, got %d", len(creds))
+	}
+	if creds["192.168.1.10"] != [2]string{"admin", "pass"} {
+		t.Errorf("unexpected creds for .10: %v", creds["192.168.1.10"])
+	}
+	if creds["192.168.1.20"] != [2]string{"user", "secret"} {
+		t.Errorf("unexpected creds for .20: %v", creds["192.168.1.20"])
+	}
+}

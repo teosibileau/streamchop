@@ -14,7 +14,7 @@ func TestCredentialsSameForAll(t *testing.T) {
 		{Name: "Cam3", IP: "192.168.1.30"},
 	}
 
-	m := NewCredentialsModel(cameras)
+	m := NewCredentialsModel(cameras, nil)
 
 	// Type username
 	for _, r := range "admin" {
@@ -55,7 +55,7 @@ func TestCredentialsPerCamera(t *testing.T) {
 		{Name: "Cam2", IP: "192.168.1.20"},
 	}
 
-	m := NewCredentialsModel(cameras)
+	m := NewCredentialsModel(cameras, nil)
 
 	// First camera: user1/pass1
 	for _, r := range "user1" {
@@ -102,11 +102,41 @@ func TestCredentialsRejectsEmptyUsername(t *testing.T) {
 		{Name: "Cam1", IP: "192.168.1.10"},
 	}
 
-	m := NewCredentialsModel(cameras)
+	m := NewCredentialsModel(cameras, nil)
 
 	// Try to confirm with empty username
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if m.Done() {
 		t.Error("should not accept empty username")
+	}
+}
+
+func TestCredentialsPrefillFromExisting(t *testing.T) {
+	cameras := []onvif.Camera{
+		{Name: "Cam1", IP: "192.168.1.10"},
+		{Name: "Cam2", IP: "192.168.1.20"},
+	}
+
+	existing := map[string][2]string{
+		"192.168.1.10": {"olduser", "oldpass"},
+		"192.168.1.20": {"admin", "secret"},
+	}
+
+	m := NewCredentialsModel(cameras, existing)
+
+	// First camera should be pre-filled
+	if m.username.Value() != "olduser" {
+		t.Errorf("expected pre-filled username 'olduser', got '%s'", m.username.Value())
+	}
+
+	// Confirm first camera with pre-filled values
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.camIndex != 1 {
+		t.Fatalf("expected to advance to camera 1, got %d", m.camIndex)
+	}
+
+	// Second camera should be pre-filled
+	if m.username.Value() != "admin" {
+		t.Errorf("expected pre-filled username 'admin', got '%s'", m.username.Value())
 	}
 }

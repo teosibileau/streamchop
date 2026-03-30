@@ -153,6 +153,40 @@ func ParseExistingDist(composePath, envPath string) []string {
 	return ips
 }
 
+// ParseExistingCreds reads existing .env and returns a map of IP -> (username, password)
+// extracted from CAM*_RTSP_URL entries.
+func ParseExistingCreds(envPath string) map[string][2]string {
+	env := readExistingEnv(envPath)
+	creds := make(map[string][2]string)
+
+	for k, v := range env {
+		if strings.HasPrefix(k, "CAM") && strings.HasSuffix(k, "_RTSP_URL") {
+			ip := extractIPFromRTSPURL(v)
+			user, pass := extractCredsFromRTSPURL(v)
+			if ip != "" && user != "" {
+				creds[ip] = [2]string{user, pass}
+			}
+		}
+	}
+
+	return creds
+}
+
+func extractCredsFromRTSPURL(rtspURL string) (string, string) {
+	// rtsp://user:pass@192.168.1.100:554/stream
+	rtspURL = strings.TrimPrefix(rtspURL, "rtsp://")
+	idx := strings.LastIndex(rtspURL, "@")
+	if idx < 0 {
+		return "", ""
+	}
+	userInfo := rtspURL[:idx]
+	parts := strings.SplitN(userInfo, ":", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return parts[0], ""
+}
+
 func extractIPFromRTSPURL(rtspURL string) string {
 	// rtsp://user:pass@192.168.1.100:554/stream
 	rtspURL = strings.TrimPrefix(rtspURL, "rtsp://")

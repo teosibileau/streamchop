@@ -19,17 +19,20 @@ const (
 
 // CredentialsModel handles per-camera credential input.
 type CredentialsModel struct {
-	cameras    []onvif.Camera
-	creds      []onvif.Credentials
-	camIndex   int
-	field      credentialField
-	username   textinput.Model
-	password   textinput.Model
-	sameForAll bool
-	done       bool
+	cameras       []onvif.Camera
+	creds         []onvif.Credentials
+	camIndex      int
+	field         credentialField
+	username      textinput.Model
+	password      textinput.Model
+	sameForAll    bool
+	done          bool
+	existingCreds map[string][2]string
 }
 
-func NewCredentialsModel(cameras []onvif.Camera) CredentialsModel {
+// NewCredentialsModel creates a credential input step. existingCreds maps
+// camera IP to [username, password] for pre-filling from a previous .env.
+func NewCredentialsModel(cameras []onvif.Camera, existingCreds map[string][2]string) CredentialsModel {
 	u := textinput.New()
 	u.Placeholder = "admin"
 	u.CharLimit = 64
@@ -40,11 +43,22 @@ func NewCredentialsModel(cameras []onvif.Camera) CredentialsModel {
 	p.CharLimit = 128
 	p.EchoMode = textinput.EchoPassword
 
+	// Pre-fill from first camera's existing creds if available
+	creds := make([]onvif.Credentials, len(cameras))
+	if len(cameras) > 0 {
+		if existing, ok := existingCreds[cameras[0].IP]; ok {
+			u.SetValue(existing[0])
+			p.SetValue(existing[1])
+			creds[0] = onvif.Credentials{Username: existing[0], Password: existing[1]}
+		}
+	}
+
 	return CredentialsModel{
-		cameras:  cameras,
-		creds:    make([]onvif.Credentials, len(cameras)),
-		username: u,
-		password: p,
+		cameras:       cameras,
+		creds:         creds,
+		username:      u,
+		password:      p,
+		existingCreds: existingCreds,
 	}
 }
 
@@ -93,8 +107,15 @@ func (m CredentialsModel) Update(msg tea.Msg) (CredentialsModel, tea.Cmd) {
 				return m, nil
 			}
 
-			m.username.SetValue("")
-			m.password.SetValue("")
+			// Pre-fill next camera's creds if available
+			nextCam := m.cameras[m.camIndex]
+			if existing, ok := m.existingCreds[nextCam.IP]; ok {
+				m.username.SetValue(existing[0])
+				m.password.SetValue(existing[1])
+			} else {
+				m.username.SetValue("")
+				m.password.SetValue("")
+			}
 			m.field = fieldUsername
 			m.password.Blur()
 			return m, m.username.Focus()

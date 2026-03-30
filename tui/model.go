@@ -31,16 +31,19 @@ type model struct {
 	cameras     []onvif.Camera
 	selected    []onvif.Camera
 	configured  []steps.ConfiguredCamera
-	hostIP      string
-	err         error
+	hostIP        string
+	existingCreds map[string][2]string
+	err           error
 }
 
 func newModel() model {
 	existing := compose.ParseExistingDist("docker-compose.dist.yml", ".env")
+	existingCreds := compose.ParseExistingCreds(".env")
 	return model{
-		step:      stepDiscovery,
-		discovery: steps.NewDiscoveryModel(),
-		selection: steps.NewSelectionModel(existing),
+		step:          stepDiscovery,
+		discovery:     steps.NewDiscoveryModel(),
+		selection:     steps.NewSelectionModel(existing),
+		existingCreds: existingCreds,
 	}
 }
 
@@ -76,7 +79,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.selection = updated
 		if m.selection.Done() {
 			m.selected = m.selection.Selected()
-			m.credentials = steps.NewCredentialsModel(m.selected)
+			m.credentials = steps.NewCredentialsModel(m.selected, m.existingCreds)
 			m.step = stepCredentials
 			return m, m.credentials.Init()
 		}
