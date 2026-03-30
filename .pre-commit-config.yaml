@@ -6,6 +6,12 @@ repos:
         args: ['--allow-multiple-documents', '--unsafe']
       - id: end-of-file-fixer
       - id: trailing-whitespace
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.1.0
+    hooks:
+      - id: golangci-lint
+        args: ['--path-prefix', 'tui']
+        files: ^tui/
   - repo: https://github.com/doublify/pre-commit-rust
     rev: v1.0
     hooks:
