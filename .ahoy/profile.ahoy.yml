@@ -1,0 +1,7 @@
+---
+ahoyapi: v2
+commands:
+  dev:
+    usage: Start with dev services (includes mqtt broker)
+    cmd: |
+      COMPOSE_PROFILES="dev,${COMPOSE_PROFILES}" ahoy $@

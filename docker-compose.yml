@@ -3,7 +3,6 @@ services:
   chopper_cam_1:
     build: ./chopper
     container_name: streamchop-chopper-cam1
-    restart: unless-stopped
     environment:
       - RTSP_URL=${CAM1_RTSP_URL}
     volumes:
@@ -12,7 +11,8 @@ services:
   mqtt:
     image: rabbitmq:4-management-alpine
     container_name: streamchop-mqtt
-    restart: unless-stopped
+    profiles:
+      - dev
     environment:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
@@ -26,7 +26,6 @@ services:
   emitter:
     build: ./emitter
     container_name: streamchop-emitter
-    restart: unless-stopped
     environment:
       - MQTT_HOST=${MQTT_HOST}
       - MQTT_PORT=${MQTT_PORT:-1883}
@@ -42,7 +41,6 @@ services:
   nginx:
     build: ./nginx
     container_name: streamchop-nginx
-    restart: unless-stopped
     ports:
       - "8080:80"
     volumes:

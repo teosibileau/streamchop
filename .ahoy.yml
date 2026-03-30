@@ -12,6 +12,10 @@ commands:
       echo "Cleaning output folder..."
       rm -rf output/*/snapshots output/*/*.ts output/*/*.m3u8
       echo "Done."
+  profile:
+    usage: Compose profile helpers
+    imports:
+      - .ahoy/profile.ahoy.yml
   docker:
     usage: Docker commands for StreamChop
     imports:
