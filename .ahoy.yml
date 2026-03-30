@@ -20,3 +20,7 @@ commands:
     usage: Docker commands for StreamChop
     imports:
       - .ahoy/docker.ahoy.yml
+  tui:
+    usage: TUI setup tool commands
+    imports:
+      - .ahoy/tui.ahoy.yml

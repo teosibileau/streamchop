@@ -2,7 +2,7 @@
 .env
 
 # Docker
-docker-compose.override.yml
+docker-compose.dist.yml
 
 # OS
 .DS_Store

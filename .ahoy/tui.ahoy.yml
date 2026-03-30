@@ -1,0 +1,14 @@
+---
+ahoyapi: v2
+commands:
+  build:
+    usage: Build the TUI setup tool image
+    cmd: docker build -t streamchop-setup ./tui
+
+  run:
+    usage: Run the TUI setup tool
+    cmd: docker run -it --rm --net=host -v $(pwd):/app streamchop-setup
+
+  test:
+    usage: Run TUI tests
+    cmd: docker run --rm streamchop-setup go test ./...
