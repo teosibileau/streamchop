@@ -36,24 +36,77 @@ var probeTemplate = `<?xml version="1.0" encoding="UTF-8"?>
   </s:Body>
 </s:Envelope>`
 
-// Discover sends a WS-Discovery probe on all network interfaces and returns
-// any ONVIF cameras found on the LAN.
+// Discover sends a WS-Discovery probe on all suitable network interfaces
+// and returns any ONVIF cameras found on the LAN.
 func Discover() ([]Camera, error) {
 	msg := fmt.Sprintf(probeTemplate, uuid.New().String())
 
-	addr, err := net.ResolveUDPAddr("udp4", multicastAddr)
+	multicast, err := net.ResolveUDPAddr("udp4", multicastAddr)
 	if err != nil {
 		return nil, fmt.Errorf("resolve multicast addr: %w", err)
 	}
 
-	ifaces, err := net.Interfaces()
+	localIPs, err := getLANIPs()
 	if err != nil {
-		return nil, fmt.Errorf("list interfaces: %w", err)
+		return nil, fmt.Errorf("get LAN IPs: %w", err)
+	}
+	if len(localIPs) == 0 {
+		return nil, fmt.Errorf("no suitable network interfaces found")
 	}
 
 	seen := make(map[string]bool)
 	var cameras []Camera
+	var lastErr error
 
+	for _, ip := range localIPs {
+		conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: ip, Port: 0})
+		if err != nil {
+			lastErr = fmt.Errorf("listen on %s: %w", ip, err)
+			continue
+		}
+
+		if err := conn.SetDeadline(time.Now().Add(probeTimeout)); err != nil {
+			_ = conn.Close()
+			lastErr = fmt.Errorf("set deadline on %s: %w", ip, err)
+			continue
+		}
+
+		if _, err := conn.WriteToUDP([]byte(msg), multicast); err != nil {
+			_ = conn.Close()
+			lastErr = fmt.Errorf("send probe on %s: %w", ip, err)
+			continue
+		}
+
+		found, err := readResponses(conn)
+		_ = conn.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("read responses on %s: %w", ip, err)
+			continue
+		}
+
+		for _, cam := range found {
+			if !seen[cam.XAddr] {
+				seen[cam.XAddr] = true
+				cameras = append(cameras, cam)
+			}
+		}
+	}
+
+	if len(cameras) == 0 && lastErr != nil {
+		return nil, lastErr
+	}
+
+	return cameras, nil
+}
+
+// getLANIPs returns all IPv4 addresses on up, non-loopback, multicast interfaces.
+func getLANIPs() ([]net.IP, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	var ips []net.IP
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
@@ -72,22 +125,11 @@ func Discover() ([]Camera, error) {
 			if !ok || ipNet.IP.To4() == nil {
 				continue
 			}
-
-			found, err := probeInterface(ipNet.IP, addr, []byte(msg))
-			if err != nil {
-				continue
-			}
-
-			for _, cam := range found {
-				if !seen[cam.XAddr] {
-					seen[cam.XAddr] = true
-					cameras = append(cameras, cam)
-				}
-			}
+			ips = append(ips, ipNet.IP)
 		}
 	}
 
-	return cameras, nil
+	return ips, nil
 }
 
 // ProbeAddress sends an ONVIF probe directly to a specific IP address,
@@ -113,25 +155,6 @@ func ProbeAddress(ip string) ([]Camera, error) {
 
 	if _, err := conn.Write([]byte(msg)); err != nil {
 		return nil, fmt.Errorf("send probe: %w", err)
-	}
-
-	return readResponses(conn)
-}
-
-func probeInterface(localIP net.IP, multicast *net.UDPAddr, msg []byte) ([]Camera, error) {
-	local := &net.UDPAddr{IP: localIP, Port: 0}
-	conn, err := net.ListenUDP("udp4", local)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = conn.Close() }()
-
-	if err := conn.SetDeadline(time.Now().Add(probeTimeout)); err != nil {
-		return nil, err
-	}
-
-	if _, err := conn.WriteToUDP(msg, multicast); err != nil {
-		return nil, err
 	}
 
 	return readResponses(conn)
@@ -175,6 +198,12 @@ func parseProbeMatch(data []byte) ([]Camera, error) {
 				continue
 			}
 
+			// Skip IPv6 link-local and non-IPv4 addresses
+			host := u.Hostname()
+			if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+				continue
+			}
+
 			port := u.Port()
 			if port == "" {
 				port = "80"
@@ -182,7 +211,7 @@ func parseProbeMatch(data []byte) ([]Camera, error) {
 
 			name := extractNameFromScopes(match.Scopes)
 			if name == "" {
-				name = u.Hostname()
+				name = host
 			}
 
 			cameras = append(cameras, Camera{
