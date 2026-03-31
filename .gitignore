@@ -4,6 +4,9 @@
 # Docker
 docker-compose.dist.yml
 
+# TUI binary
+streamchop-setup
+
 # OS
 .DS_Store
 Thumbs.db
