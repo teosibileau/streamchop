@@ -5,7 +5,7 @@
 docker-compose.dist.yml
 
 # TUI binary
-streamchop-setup
+streamchop
 
 # OS
 .DS_Store

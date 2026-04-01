@@ -2,11 +2,13 @@ package steps
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/teosibileau/streamchop/tui/compose"
+	"github.com/teosibileau/streamchop/tui/systemd"
 )
 
 type generateState int
@@ -14,11 +16,18 @@ type generateState int
 const (
 	generateConfirm generateState = iota
 	generateWriting
+	generateAskInstall
+	generateInstalling
+	generateInstallDone
 	generateDone
 	generateError
 )
 
 type generateDoneMsg struct {
+	err error
+}
+
+type installDoneMsg struct {
 	err error
 }
 
@@ -53,7 +62,16 @@ func (m GenerateModel) Update(msg tea.Msg) (GenerateModel, tea.Cmd) {
 			m.err = msg.err
 			return m, nil
 		}
-		m.state = generateDone
+		m.state = generateAskInstall
+		return m, nil
+
+	case installDoneMsg:
+		if msg.err != nil {
+			m.state = generateError
+			m.err = msg.err
+			return m, nil
+		}
+		m.state = generateInstallDone
 		m.done = true
 		return m, nil
 
@@ -65,6 +83,16 @@ func (m GenerateModel) Update(msg tea.Msg) (GenerateModel, tea.Cmd) {
 				m.state = generateWriting
 				return m, generateFiles(m.cameras, m.mqttConfig, m.hostIP)
 			case "q", "n":
+				m.done = true
+				return m, nil
+			}
+		case generateAskInstall:
+			switch msg.String() {
+			case "y":
+				m.state = generateInstalling
+				return m, installServiceCmd()
+			case "n":
+				m.state = generateDone
 				m.done = true
 				return m, nil
 			}
@@ -113,15 +141,33 @@ func (m GenerateModel) View() string {
 	case generateWriting:
 		b.WriteString("\n  Writing files...\n")
 
+	case generateAskInstall:
+		ok := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+		fmt.Fprintf(&b, "\n  %s\n\n", ok.Render("Files generated!"))
+		b.WriteString("  Generated:\n")
+		b.WriteString("    - docker-compose.dist.yml\n")
+		b.WriteString("    - .env\n\n")
+		b.WriteString("  Install as systemd service? (y/n)\n")
+
+	case generateInstalling:
+		b.WriteString("\n  Installing systemd service...\n")
+
+	case generateInstallDone:
+		ok := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+		fmt.Fprintf(&b, "\n  %s\n\n", ok.Render("Setup complete!"))
+		b.WriteString("  Generated:\n")
+		b.WriteString("    - docker-compose.dist.yml\n")
+		b.WriteString("    - .env\n\n")
+		b.WriteString("  Systemd service installed and running.\n")
+		b.WriteString("  Run 'streamchop status' to check health.\n")
+
 	case generateDone:
 		ok := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
 		fmt.Fprintf(&b, "\n  %s\n\n", ok.Render("Setup complete!"))
 		b.WriteString("  Generated:\n")
 		b.WriteString("    - docker-compose.dist.yml\n")
 		b.WriteString("    - .env\n\n")
-		b.WriteString("  Next steps:\n")
-		b.WriteString("    - Review the generated files\n")
-		b.WriteString("    - Run: ahoy systemd install\n")
+		b.WriteString("  Run 'streamchop install' to install as a systemd service.\n")
 
 	case generateError:
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
@@ -164,5 +210,18 @@ func generateFiles(cameras []ConfiguredCamera, mqttConfig MQTTConfig, hostIP str
 		}
 
 		return generateDoneMsg{}
+	}
+}
+
+func installServiceCmd() tea.Cmd {
+	return func() tea.Msg {
+		wd, err := os.Getwd()
+		if err != nil {
+			return installDoneMsg{err: err}
+		}
+		if err := systemd.Install(wd); err != nil {
+			return installDoneMsg{err: err}
+		}
+		return installDoneMsg{}
 	}
 }
