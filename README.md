@@ -22,12 +22,71 @@ FFmpeg remuxes H.264 without re-encoding (`-c copy`) for HLS segments. Snapshots
 | `mqtt` | RabbitMQ + MQTT plugin | Message broker with management UI on `:15672` |
 | `nginx` | Nginx (Alpine) | Serves HLS files and snapshots over HTTP on `:8080` |
 
-## Quick start
+## Edge deployment
+
+Deploy minimal edge units close to the cameras — a Jetson Nano or Pi on the same VLAN. No repo clone needed.
+
+### 1. Install
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/teosibileau/streamchop/main/install.sh | sh
+```
+
+### 2. Setup
+
+```bash
+./streamchop setup
+```
+
+The wizard will:
+- Scan your network for ONVIF cameras via WS-Discovery
+- Let you select which cameras to configure
+- Prompt for credentials per camera (with a "same for all" shortcut)
+- Probe each camera for its RTSP stream URI
+- Scan for an MQTT broker on the network (or skip MQTT entirely)
+- Auto-detect the host IP for HLS access
+- Generate `docker-compose.dist.yml` and `.env`
+- Offer to install as a systemd service
+
+### 3. Service management
+
+```bash
+./streamchop install     # install and start the systemd service
+./streamchop status      # check service health
+./streamchop uninstall   # remove the service
+```
+
+The systemd service uses a watchdog — if any container exits, the entire stack is restarted.
+
+### Re-running setup
+
+Run `./streamchop setup` again at any time. It will pre-select previously configured cameras and pre-fill credentials from the existing `.env`.
+
+### Pinning image versions
+
+Edit `.env` to pin to a specific tag:
+
+```
+TAG=sha-abc123d
+```
+
+## Development
+
+### Prerequisites
+
+- Docker and Docker Compose
+- [Ahoy](https://github.com/ahoy-cli/ahoy) task runner
+- Go 1.23+ (for TUI development)
+- [pre-commit](https://pre-commit.com/) (for linting hooks)
+
+### Quick start
+
+```bash
+git clone git@github.com:teosibileau/streamchop.git
+cd streamchop
 cp .env.example .env   # fill in camera URL + HLS_BASE_URL with your host IP
 ahoy setup             # install pre-commit hooks
-ahoy docker up         # start all services
+ahoy profile dev docker up  # start all services including local MQTT broker
 ```
 
 HLS stream available at `http://<host-ip>:8080/cam1/stream.m3u8`
@@ -88,85 +147,19 @@ Segments and snapshots use Unix epoch timestamps:
 
 The playlist keeps 360 segments (1 hour of rewind). Old segments are retained on disk.
 
-## Production deployment
-
-The goal of this setup is to deploy minimal edge units close to the cameras — for example, a Pi or small compute node on the same VLAN as the cameras. The MQTT broker and any downstream consumers live elsewhere on the network.
-
-Use the pre-built images from GHCR instead of building locally. Create a `docker-compose.yml` on each edge node:
-
-```yaml
-services:
-  chopper_cam_1:
-    image: ghcr.io/teosibileau/streamchop/chopper:latest
-    container_name: streamchop-chopper-cam1
-    restart: unless-stopped
-    environment:
-      - RTSP_URL=rtsp://admin:pass@192.168.1.100:554/cam/realmonitor?channel=1&subtype=0
-    volumes:
-      - ./output/cam1:/output
-
-  chopper_cam_2:
-    image: ghcr.io/teosibileau/streamchop/chopper:latest
-    container_name: streamchop-chopper-cam2
-    restart: unless-stopped
-    environment:
-      - RTSP_URL=rtsp://admin:pass@192.168.1.101:554/cam/realmonitor?channel=1&subtype=0
-    volumes:
-      - ./output/cam2:/output
-
-  emitter:
-    image: ghcr.io/teosibileau/streamchop/emitter:latest
-    container_name: streamchop-emitter
-    restart: unless-stopped
-    environment:
-      - MQTT_HOST=10.0.0.50
-      - MQTT_PORT=1883
-      - MQTT_TOPIC_PREFIX=streamchop
-      - HLS_BASE_URL=http://192.168.1.50:8080
-      - WATCH_DIR=/output
-      - RUST_LOG=info
-    volumes:
-      - ./output:/output:ro
-
-  nginx:
-    image: nginx:alpine
-    container_name: streamchop-nginx
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-    volumes:
-      - ./output:/usr/share/nginx/html:ro
-```
-
-Pin to a specific SHA for reproducible deployments:
-
-```yaml
-    image: ghcr.io/teosibileau/streamchop/chopper:abc123def
-```
-
-## Adding cameras
-
-Duplicate the chopper service in `docker-compose.yml`:
-
-```yaml
-  chopper_cam_2:
-    build: ./chopper
-    container_name: streamchop-chopper-cam2
-    restart: unless-stopped
-    environment:
-      - RTSP_URL=${CAM2_RTSP_URL}
-    volumes:
-      - ./output/cam2:/output
-```
-
-Add `CAM2_RTSP_URL` to `.env`. The emitter automatically picks up new subdirectories under `output/`.
-
 ## Ahoy commands
+
+### General
 
 | Command | Description |
 |---------|-------------|
 | `ahoy setup` | Install pre-commit hooks |
 | `ahoy clean` | Remove all segments and snapshots from the output folder |
+
+### Docker
+
+| Command | Description |
+|---------|-------------|
 | `ahoy docker up` | Start containers |
 | `ahoy docker stop` | Stop containers (non-destructive) |
 | `ahoy docker build` | Build containers |
@@ -178,24 +171,52 @@ Add `CAM2_RTSP_URL` to `.env`. The emitter automatically picks up new subdirecto
 | `ahoy docker exec` | Execute a command in a running container |
 | `ahoy docker run` | Run a one-off command |
 
+### Profiles
+
+| Command | Description |
+|---------|-------------|
+| `ahoy profile dev` | Include dev services (MQTT broker) in compose commands |
+
+Usage: `ahoy profile dev docker up` starts all services including the local MQTT broker.
+
+### TUI setup tool
+
+| Command | Description |
+|---------|-------------|
+| `ahoy tui build` | Build the streamchop binary locally |
+| `ahoy tui run` | Run the setup wizard |
+| `ahoy tui test` | Run TUI tests |
+
 ## Project structure
 
 ```
-chopper/                   # FFmpeg chopper image
+chopper/                        # FFmpeg chopper image
   Dockerfile
   entrypoint.sh
-emitter/                   # Rust MQTT emitter image
+emitter/                        # Rust MQTT emitter image
   Cargo.toml
   src/main.rs
   Dockerfile
-nginx/                     # Nginx HLS server image
+nginx/                          # Nginx HLS server image
   nginx.conf
   Dockerfile
-.ahoy.yml                  # Root ahoy config
-.ahoy/docker.ahoy.yml      # Docker commands
-.env.example                # Environment template
-docker-compose.yml          # Service definitions
-output/                     # Per-camera HLS segments + snapshots (gitignored)
+tui/                            # streamchop CLI tool (Go)
+  main.go
+  model.go
+  onvif/                        # ONVIF camera discovery + RTSP probing
+  compose/                      # docker-compose.dist.yml + .env generation
+  steps/                        # TUI wizard steps
+  systemd/                      # Embedded systemd service template + watchdog
+.ahoy.yml                       # Root ahoy config
+.ahoy/
+  docker.ahoy.yml               # Docker commands
+  profile.ahoy.yml              # Compose profile helpers
+  tui.ahoy.yml                  # TUI build/run/test commands
+.env.example                     # Environment template
+docker-compose.yml               # Dev service definitions (includes MQTT via profile)
+docker-compose.dist.yml          # Production compose (generated by streamchop setup, gitignored)
+install.sh                       # One-liner installer for the streamchop binary
+output/                          # Per-camera HLS segments + snapshots (gitignored)
   cam1/
     segment_<epoch>.ts
     stream.m3u8
