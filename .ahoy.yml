@@ -24,7 +24,3 @@ commands:
     usage: TUI setup tool commands
     imports:
       - .ahoy/tui.ahoy.yml
-  systemd:
-    usage: Systemd service commands
-    imports:
-      - .ahoy/systemd.ahoy.yml
