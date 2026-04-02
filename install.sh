@@ -18,14 +18,15 @@ case "$ARCH" in
 esac
 
 case "$OS" in
-  linux|darwin) ;;
+  linux) ;;
   *)
     echo "Error: unsupported OS: $OS" >&2
     exit 1
     ;;
 esac
 
-URL="https://github.com/${REPO}/releases/latest/download/${BINARY}-${OS}-${ARCH}"
+BASE_URL="${STREAMCHOP_BASE_URL:-https://github.com/${REPO}/releases/latest/download}"
+URL="${BASE_URL}/${BINARY}-${OS}-${ARCH}"
 
 echo "Downloading ${BINARY} for ${OS}/${ARCH}..."
 curl -fsSL -o "$BINARY" "$URL"
