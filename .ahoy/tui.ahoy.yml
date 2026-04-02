@@ -1,0 +1,14 @@
+---
+ahoyapi: v2
+commands:
+  build:
+    usage: Build the streamchop binary
+    cmd: cd tui && go build -o streamchop .
+
+  run:
+    usage: Run the streamchop setup wizard
+    cmd: cd tui && go run . setup
+
+  test:
+    usage: Run TUI tests
+    cmd: cd tui && go test ./...
