@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'tui/**'
+      - 'install.sh'
 
 jobs:
   lint:
@@ -41,7 +42,6 @@ jobs:
 
   build:
     needs: [lint, test]
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -49,8 +49,6 @@ jobs:
           - goos: linux
             goarch: amd64
           - goos: linux
-            goarch: arm64
-          - goos: darwin
             goarch: arm64
     steps:
       - uses: actions/checkout@v4
@@ -73,6 +71,49 @@ jobs:
         with:
           name: streamchop-${{ matrix.goos }}-${{ matrix.goarch }}
           path: tui/streamchop-${{ matrix.goos }}-${{ matrix.goarch }}
+
+  test-install:
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            artifact: streamchop-linux-amd64
+          - runner: ubuntu-24.04-arm
+            artifact: streamchop-linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: artifacts
+
+      - name: Start local server
+        run: |
+          python3 -m http.server 18199 --directory artifacts &
+          sleep 1
+
+      - name: Test install.sh
+        env:
+          STREAMCHOP_BASE_URL: http://localhost:18199
+        run: |
+          sh install.sh
+          test -x streamchop
+
+  test-install-unsupported:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test unsupported OS
+        run: |
+          if sh install.sh 2>err.log; then
+            echo "FAIL: expected install.sh to fail on unsupported OS"
+            exit 1
+          fi
+          grep -q "unsupported OS: darwin" err.log
 
   release:
     needs: build
